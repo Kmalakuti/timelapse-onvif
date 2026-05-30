@@ -1,0 +1,29 @@
+# Local editor/assistant state
+.claude/settings.local.json
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Runtime capture output
+data/captures/
+
+# Logs and generated reports
+*.log
+test_results_*.txt
+
+# Build artifacts and dependency folders
+bin/
+dist/
+build/
+coverage/
+node_modules/
+web/node_modules/
+web/dist/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

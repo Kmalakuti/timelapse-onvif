@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Edit Camera</title>
+  {% include "_style.html" %}
+
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div class="brand">Edit: {{camera.name}}</div>
+      <span class="spacer"></span>
+      <a class="btn ghost" href="/">Back</a>
+    </div>
+
+    <div class="surface" style="padding:22px;">
+      <form action="/camera/{{camera.id}}/edit" method="post" class="form-grid">
+        <input type="hidden" name="csrf_token" value="{{csrf_token}}"/>
+        <div>
+          <label>Name</label>
+          <input name="name" value="{{camera.name}}" required>
+        </div>
+        <div>
+          <label>Host / IP</label>
+          <input name="host" value="{{camera.host}}" required>
+        </div>
+        <div>
+          <label>ONVIF Port</label>
+          <input name="onvif_port" value="{{camera.onvif_port}}" required>
+        </div>
+        <div>
+          <label>Username</label>
+          <input name="username" value="{{camera.username}}" required>
+        </div>
+        <div>
+          <label>Password (leave blank to keep)</label>
+          <input name="password" type="password" value="">
+        </div>
+        <div>
+          <label>Interval (seconds)</label>
+          <input name="interval_seconds" value="{{camera.interval_seconds}}" required>
+        </div>
+        <div>
+          <label>Snapshot URI (optional)</label>
+          <input name="snapshot_uri" value="{{camera.snapshot_uri or ''}}">
+        </div>
+        <div>
+          <label>RTSP URI (auto-filled by ONVIF probe)</label>
+          <input name="rtsp_uri" value="{{camera.rtsp_uri or ''}}">
+        </div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+          <button class="btn primary" type="submit">Save changes</button>
+          <a class="btn ghost" href="/">Cancel</a>
+        </div>
+      </form>
+      <p class="muted" style="margin-top:14px;">Tip: after saving, run “ONVIF Probe” from the dashboard to refresh RTSP/Snapshot automatically.</p>
+    </div>
+  </div>
+</body>
+</html>

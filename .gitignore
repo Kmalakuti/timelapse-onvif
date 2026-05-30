@@ -1,0 +1,28 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Runtime data
+.timelapse-data/
+data/
+screens/
+*.sqlite
+*.sqlite3
+*.db
+
+# Python/build artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local notes and generated helpers
+docs/HANDOFF*.md
+docs/TESTS.md
+_tmp_*
+*.bak
+*.bdump
+templates/bak_*.html
+repo_tree.txt

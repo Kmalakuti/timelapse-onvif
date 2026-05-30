@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Renders</title>
+  {% include "_style.html" %}
+
+</head>
+<body>
+  <div class="page">
+    {% include "_nav.html" %}
+    <div class="topbar surface" style="margin-top:12px;">
+      <div class="brand">Timelapses</div>
+      <span class="spacer"></span>
+      <a class="btn primary" href="/render">New Timelapse</a>
+      <a class="btn ghost" href="/">Back</a>
+    </div>
+
+    <div class="surface" style="padding:18px;">
+      {% if not jobs %}
+        <p class="muted" style="margin:0;">No renders yet.</p>
+      {% else %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Job</th>
+              <th>Camera</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for j in jobs %}
+              <tr>
+                <td><a href="/render/{{j.job_id}}"><code>{{j.job_id}}</code></a></td>
+                <td>{{j.camera_name}}</td>
+                <td><span class="pill">{{j.status}}</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

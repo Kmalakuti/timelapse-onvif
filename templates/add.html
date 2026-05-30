@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Add Camera</title>
+  {% include "_style.html" %}
+
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div class="brand">Add Camera</div>
+      <span class="spacer"></span>
+      <a class="btn ghost" href="/">Back</a>
+    </div>
+
+    <div class="surface" style="padding:22px;">
+      <form action="/add" method="post" class="form-grid">
+        <input type="hidden" name="csrf_token" value="{{csrf_token}}"/>
+
+        <div>
+          <label>Name</label>
+          <input name="name" placeholder="ExampleCamera" required>
+        </div>
+        <div>
+          <label>Host / IP</label>
+          <input name="host" placeholder="192.168.1.50" required>
+        </div>
+        <div>
+          <label>ONVIF Port</label>
+          <input name="onvif_port" value="80" required>
+        </div>
+        <div>
+          <label>Username</label>
+          <input name="username" placeholder="username" required>
+        </div>
+        <div>
+          <label>Password</label>
+          <input name="password" type="password" value="">
+        </div>
+        <div>
+          <label>Interval (seconds)</label>
+          <input name="interval_seconds" value="60" required>
+        </div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+          <button class="btn primary" type="submit">Save Camera</button>
+          <a class="btn ghost" href="/">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

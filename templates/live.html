@@ -1,0 +1,347 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Live View</title>
+  {% include "_style.html" %}
+  <style>
+    body { margin: 0; font-family: "Segoe UI Variable","DM Sans","Helvetica Neue",sans-serif; background: var(--bg); color: var(--text); }
+    a { color: var(--text); text-decoration: none; }
+    a:hover { color: var(--accent-strong); text-decoration: none; }
+
+    .topbar {
+      position: sticky; top: 0; z-index: 10;
+      display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+      padding: 12px 14px;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(8px);
+    }
+    .topbar .title { font-weight: 700; letter-spacing: 0.02em; }
+    .topbar .spacer { flex: 1; }
+    .control { display:flex; align-items:center; gap:8px; color: var(--muted); font-size: 14px; }
+    select, button {
+      background: rgba(255,255,255,0.05); color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 6px 10px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+      padding: 14px;
+    }
+
+    .tile {
+      background: linear-gradient(150deg, var(--panel), rgba(255,255,255,0.02));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      display:flex;
+      flex-direction: column;
+      min-height: 220px;
+      box-shadow: 0 18px 35px rgba(0,0,0,0.35);
+    }
+
+    .tilehead {
+      padding: 12px 12px 10px 12px;
+      border-bottom: 1px solid var(--border);
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+    }
+    .tilehead .meta { flex:1; min-width: 0; }
+    .name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .host { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .badge {
+      font-size: 12px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--text);
+      white-space: nowrap;
+    }
+    .badge.ok { border-color: rgba(74,222,128,0.6); }
+    .badge.warn { border-color: rgba(251,191,36,0.7); }
+    .badge.bad { border-color: rgba(248,113,113,0.7); }
+    .badge.off { border-color: rgba(107,114,128,0.7); }
+
+    .media {
+      position: relative;
+      background: #000;
+      aspect-ratio: 16/9;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .media img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display:block;
+      background: #000;
+    }
+
+    .overlay {
+      position:absolute;
+      inset:0;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      gap:6px;
+      padding: 12px;
+      background: rgba(0,0,0,0.55);
+      color: var(--text);
+      text-align: center;
+      font-size: 13px;
+    }
+    .overlay.hidden { display:none; }
+    .overlay .small { color: var(--muted); font-size: 12px; }
+
+    .tilefoot {
+      padding: 12px;
+      display:flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .statusline { font-size: 13px; color: var(--text); }
+    .details {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+    details[open] summary { color: var(--text); }
+
+    /* Mobile tightening */
+    @media (max-width: 480px) {
+      .grid { gap: 10px; padding: 10px; }
+      .topbar { padding: 10px; }
+      .tilehead { padding: 10px; }
+      .tilefoot { padding: 10px; }
+    }
+  </style>
+</head>
+<body>
+  {% include "_nav.html" %}
+  <div class="topbar live-controls">
+    <div class="title">Live View</div>
+    <div class="spacer"></div>
+    <div class="control">
+      <label for="rate">Refresh</label>
+      <select id="rate">
+        <option value="800">0.8s</option>
+        <option value="1200" selected>1.2s</option>
+        <option value="2000">2s</option>
+        <option value="3500">3.5s</option>
+        <option value="5000">5s</option>
+      </select>
+      <button type="button" id="refreshNow">Refresh now</button>
+    </div>
+  </div>
+
+  <div class="grid" id="grid">
+    {% for c in cameras %}
+    <div class="tile" id="tile-{{c.id}}" data-id="{{c.id}}" data-name="{{c.name}}">
+      <div class="tilehead">
+        <div class="meta">
+          <div class="name">{{c.name}}</div>
+          <div class="host">{{c.host}}</div>
+        </div>
+        <div class="badge off" id="badge-{{c.id}}">{{ "RUNNING" if c.running else "STOPPED" }}</div>
+      </div>
+
+      <div class="media">
+        <img id="img-{{c.id}}" alt="{{c.name}}"/>
+        <div class="overlay" id="ov-{{c.id}}">
+          <div>Loading...</div>
+          <div class="small">If this stays stuck, open "Details" below.</div>
+        </div>
+      </div>
+
+      <div class="tilefoot">
+        <div class="statusline" id="status-{{c.id}}">—</div>
+        <details>
+          <summary>Details</summary>
+          <div class="details" id="details-{{c.id}}">—</div>
+        </details>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+<script>
+  // “Live” here is done conservatively by refreshing /camera/{id}/thumb.jpg.
+  // That endpoint should use the smallest thing available (snapshot URI if configured),
+  // and it avoids adding new ffmpeg processes for the grid view.
+
+  let refreshMs = 1200;
+  const diagnoseEveryMs = 15000;
+
+  const lastOk = new Map();
+  const diagCache = new Map();
+
+  function fmtAge(ms) {
+    const s = Math.max(0, Math.floor(ms/1000));
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s/60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m/60);
+    if (h < 24) return `${h}h ${m%60}m`;
+    const d = Math.floor(h/24);
+    return `${d}d ${h%24}h`;
+  }
+
+  function setBadge(id, lvl, text) {
+    const b = document.getElementById(`badge-${id}`);
+    if (!b) return;
+    b.className = `badge ${lvl}`;
+    if (text) b.textContent = text;
+  }
+
+  function setOverlay(id, show, title, subtitle) {
+    const ov = document.getElementById(`ov-${id}`);
+    if (!ov) return;
+    if (!show) {
+      ov.classList.add("hidden");
+      return;
+    }
+    ov.classList.remove("hidden");
+    ov.innerHTML = `
+      <div>${title || "Loading..."}</div>
+      <div class="small">${subtitle || ""}</div>
+    `;
+  }
+
+  function setStatus(id, text) {
+    const el = document.getElementById(`status-${id}`);
+    if (el) el.textContent = text || "—";
+  }
+
+  function setDetails(id, text) {
+    const el = document.getElementById(`details-${id}`);
+    if (el) el.textContent = text || "—";
+  }
+
+  async function diagnose(id) {
+    try {
+      const r = await fetch(`/api/camera/${id}/diagnose`, { cache: "no-store" });
+      if (!r.ok) {
+        const t = await r.text().catch(()=> "");
+        diagCache.set(id, {level:"warn", summary:`Diagnose HTTP ${r.status}`, details:t});
+        return diagCache.get(id);
+      }
+      const data = await r.json();
+      diagCache.set(id, data);
+      return data;
+    } catch (e) {
+      diagCache.set(id, {level:"warn", summary:"Diagnose failed", error:String(e)});
+      return diagCache.get(id);
+    }
+  }
+
+  function applyDiag(id, data) {
+    if (!data) return;
+    const lvl = data.level || "off";
+    setBadge(id, lvl, data.running ? "RUNNING" : "STOPPED");
+    if (data.summary) setStatus(id, data.summary);
+
+    // Pretty details block
+    const pretty = JSON.stringify(data, null, 2);
+    setDetails(id, pretty);
+  }
+
+  function refreshImg(id) {
+    const img = document.getElementById(`img-${id}`);
+    if (!img) return;
+
+    // Force refresh
+    img.src = `/camera/${id}/thumb.jpg?ts=${Date.now()}`;
+  }
+
+  function attachImgHandlers(id) {
+    const img = document.getElementById(`img-${id}`);
+    if (!img) return;
+
+    img.onload = () => {
+      lastOk.set(id, Date.now());
+      setOverlay(id, false);
+      const d = diagCache.get(id);
+      if (d && d.level) setBadge(id, d.level, d.running ? "RUNNING" : "STOPPED");
+      if (!d || !d.summary) {
+        setStatus(id, `Updated ${new Date().toLocaleTimeString()}`);
+      }
+    };
+
+    img.onerror = async () => {
+      const last = lastOk.get(id);
+      const age = last ? `Last good: ${fmtAge(Date.now() - last)} ago` : "No successful image yet";
+      setOverlay(
+        id,
+        true,
+        "Camera image not loading",
+        `${age}. Trying to diagnose...`
+      );
+
+      const d = await diagnose(id);
+      applyDiag(id, d);
+
+      // Update overlay with the diagnostic summary if available
+      const summary = (d && d.summary) ? d.summary : "No diagnostic summary";
+      setOverlay(id, true, "Camera image not loading", summary);
+    };
+  }
+
+  async function kickstart() {
+    // Attach handlers + stagger initial loads a bit
+    const tiles = Array.from(document.querySelectorAll(".tile"));
+    tiles.forEach(t => attachImgHandlers(t.dataset.id));
+
+    // Initial diag (staggered)
+    for (let i = 0; i < tiles.length; i++) {
+      const id = tiles[i].dataset.id;
+      setStatus(id, "Checking...");
+      setOverlay(id, true, "Loading...", "Fetching first frame...");
+      setTimeout(async () => {
+        const d = await diagnose(id);
+        applyDiag(id, d);
+        refreshImg(id);
+      }, i * 150);
+    }
+
+    // Image refresh loop
+    setInterval(() => {
+      tiles.forEach(t => refreshImg(t.dataset.id));
+    }, refreshMs);
+
+    // Diagnostics refresh loop (slower)
+    setInterval(async () => {
+      for (const t of tiles) {
+        const id = t.dataset.id;
+        const d = await diagnose(id);
+        applyDiag(id, d);
+      }
+    }, diagnoseEveryMs);
+  }
+
+  // Controls
+  const rate = document.getElementById("rate");
+  rate.addEventListener("change", () => {
+    refreshMs = parseInt(rate.value || "1200", 10);
+  });
+
+  document.getElementById("refreshNow").addEventListener("click", () => {
+    document.querySelectorAll(".tile").forEach(t => refreshImg(t.dataset.id));
+  });
+
+  kickstart();
+</script>
+</body>
+</html>

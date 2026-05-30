@@ -1,0 +1,109 @@
+# TimeLapse Server Configuration Example
+# Phase 4: Profile Selection, Multi-Resolution Capture, IP Change Detection
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+# Local storage configuration
+storage:
+  type: "local"
+  base_path: "/data/captures"
+
+# Cameras configuration
+cameras:
+  # Main ONVIF Camera - uses ONVIF protocol to discover snapshot URI
+  - uuid: "main-camera-001"  # Fixed UUID to persist across restarts
+    name: "Main Camera"
+    type: "onvif"  # Uses ONVIF discovery (Phase 1 method)
+    connection:
+      url: "http://192.168.200.13:80"
+      username: "admin"
+      password: "YOUR_CAMERA_PASSWORD"
+      # Phase 4: Profile selection - specify which ONVIF profile to use
+      # Available profiles can be discovered via API: GET /api/v1/cameras/:uuid/profiles
+      profile_token: "profile_1"  # Use 4K profile (3840x2160)
+      # Capture method: "snapshot" (default) or "rtsp_ffmpeg"
+      # - snapshot: Uses ONVIF GetSnapshotUri (fast, but resolution may be limited by camera)
+      # - rtsp_ffmpeg: Extracts frames from RTSP stream using FFmpeg (full profile resolution)
+      capture_method: "rtsp_ffmpeg"  # Use FFmpeg for full 4K resolution
+    capture:
+      interval: "10s"  # Capture every 10 seconds for testing
+      quality: 85
+      enabled: true
+      schedule:
+        days_of_week: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    # Phase 4: Multi-resolution capture (optional)
+    # Capture from multiple profiles simultaneously - useful for archival + preview
+    # profiles:
+    #   - token: "profile_1"
+    #     name: "4K"
+    #     sub_folder: "4k"
+    #     enabled: true
+    #   - token: "profile_2"
+    #     name: "720p"
+    #     sub_folder: "720p"
+    #     enabled: true
+
+  # Example: Camera with multi-resolution capture enabled
+  # - name: "Building Entrance"
+  #   type: "onvif"
+  #   connection:
+  #     url: "http://192.168.200.14:80"
+  #     username: "admin"
+  #     password: "password123"
+  #     profile_token: "profile_1"  # Primary profile for single-capture mode
+  #   capture:
+  #     interval: "30s"
+  #     quality: 90
+  #     enabled: true
+  #     schedule:
+  #       days_of_week: ["monday", "tuesday", "wednesday", "thursday", "friday"]
+  #       time_window:
+  #         start: "06:00"
+  #         end: "22:00"
+  #   # Multi-resolution capture: capture both 4K and 720p
+  #   profiles:
+  #     - token: "profile_1"
+  #       name: "4K-Archive"
+  #       sub_folder: "4k"
+  #       enabled: true
+  #     - token: "profile_2"
+  #       name: "720p-Preview"
+  #       sub_folder: "preview"
+  #       enabled: true
+
+# Logging
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "text"  # text or json
+
+# Phase 4 Features:
+#
+# 1. Profile Selection via Config:
+#    - Add `profile_token` to connection config to select a specific ONVIF profile
+#    - If not specified, the first profile with a snapshot URI is auto-selected
+#    - Use API to discover available profiles: GET /api/v1/cameras/:uuid/profiles
+#
+# 2. Multi-Resolution Capture:
+#    - Add `profiles` array to camera config to capture from multiple profiles
+#    - Each profile captures to a separate subfolder (e.g., "4k", "720p")
+#    - Useful for: archival (4K) + web preview (720p), or different aspect ratios
+#    - All profiles capture at the same interval simultaneously
+#
+# 3. IP Change Detection:
+#    - Automatically detects when camera becomes unreachable
+#    - After 3 consecutive failures, attempts reconnection
+#    - If reconnection fails, uses WS-Discovery to find camera at new IP
+#    - Matches camera by manufacturer/model/serial number
+#    - Automatically updates connection URL and reconnects
+#    - Max 5 reconnection attempts before giving up
+#
+# 4. RTSP FFmpeg Capture (NEW - resolves snapshot resolution issue):
+#    - Add `capture_method: "rtsp_ffmpeg"` to connection config
+#    - Uses FFmpeg to extract frames from the RTSP video stream
+#    - Captures at the FULL resolution of the selected profile (e.g., 3840x2160)
+#    - Solves the issue where ONVIF snapshot URI returns low resolution images
+#    - Requires FFmpeg to be installed in the container/system
+#    - Slightly slower than HTTP snapshot (opens RTSP stream for each capture)
+#    - Best used with profile_token to select the highest resolution profile

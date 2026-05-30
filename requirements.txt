@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+jinja2
+onvif-zeep
+python-multipart
+requests
+pillow
+cryptography
+itsdangerous
+grpcio
+grpcio-tools

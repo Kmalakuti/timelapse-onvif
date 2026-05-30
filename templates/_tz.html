@@ -1,0 +1,149 @@
+<script>
+  // Shared time-zone helpers for client-side rendering.
+  const USER_TZ = (() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+    } catch (e) {
+      return "local time";
+    }
+  })();
+
+  const TZ_CHOICES = [
+    { offset: null, label: () => `Browser (${USER_TZ})` },
+    { offset: -12, label: () => "Baker Island (GMT-12)" },
+    { offset: -11, label: () => "Pago Pago (GMT-11)" },
+    { offset: -10, label: () => "Honolulu (GMT-10)" },
+    { offset: -9,  label: () => "Anchorage (GMT-9)" },
+    { offset: -8,  label: () => "Los Angeles (GMT-8)" },
+    { offset: -7,  label: () => "Denver (GMT-7)" },
+    { offset: -6,  label: () => "Chicago (GMT-6)" },
+    { offset: -5,  label: () => "New York (GMT-5)" },
+    { offset: -4,  label: () => "Santiago (GMT-4)" },
+    { offset: -3,  label: () => "São Paulo (GMT-3)" },
+    { offset: -2,  label: () => "South Georgia (GMT-2)" },
+    { offset: -1,  label: () => "Azores (GMT-1)" },
+    { offset: 0,   label: () => "London (GMT+0)" },
+    { offset: 1,   label: () => "Berlin (GMT+1)" },
+    { offset: 2,   label: () => "Cairo (GMT+2)" },
+    { offset: 3,   label: () => "Nairobi (GMT+3)" },
+    { offset: 4,   label: () => "Dubai (GMT+4)" },
+    { offset: 5,   label: () => "Karachi (GMT+5)" },
+    { offset: 6,   label: () => "Dhaka (GMT+6)" },
+    { offset: 7,   label: () => "Bangkok (GMT+7)" },
+    { offset: 8,   label: () => "Singapore (GMT+8)" },
+    { offset: 9,   label: () => "Tokyo (GMT+9)" },
+    { offset: 10,  label: () => "Sydney (GMT+10)" },
+    { offset: 11,  label: () => "Nouméa (GMT+11)" },
+    { offset: 12,  label: () => "Auckland (GMT+12)" },
+    { offset: 13,  label: () => "Nukuʻalofa (GMT+13)" },
+    { offset: 14,  label: () => "Kiritimati (GMT+14)" },
+  ];
+
+  const TZ_PREF_KEY = "tz_offset_hours";
+  let TZ_OFFSET = null; // null => browser zone, number => hours offset from UTC
+
+  function loadTzPref() {
+    try {
+      const v = localStorage.getItem(TZ_PREF_KEY);
+      if (v === null || v === undefined || v === "") {
+        TZ_OFFSET = null;
+      } else {
+        const n = Number(v);
+        TZ_OFFSET = Number.isFinite(n) ? n : null;
+      }
+    } catch (e) {
+      TZ_OFFSET = null;
+    }
+  }
+
+  function saveTzPref(offsetHours) {
+    try {
+      if (offsetHours === null) {
+        localStorage.removeItem(TZ_PREF_KEY);
+      } else {
+        localStorage.setItem(TZ_PREF_KEY, String(offsetHours));
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function setTzOffset(offsetHours) {
+    TZ_OFFSET = offsetHours;
+    saveTzPref(offsetHours);
+    document.dispatchEvent(
+      new CustomEvent("tz-change", {
+        detail: { offset: TZ_OFFSET, label: tzLabel() },
+      })
+    );
+  }
+
+  function tzChoiceFor(offset) {
+    return TZ_CHOICES.find(c => c.offset === offset) || null;
+  }
+
+  function tzLabel() {
+    const choice = tzChoiceFor(TZ_OFFSET);
+    if (choice) return choice.label();
+    if (TZ_OFFSET === null) return `Browser (${USER_TZ})`;
+    const sign = TZ_OFFSET >= 0 ? "+" : "-";
+    return `GMT${sign}${Math.abs(TZ_OFFSET)}`;
+  }
+
+  function populateTzSelect(sel) {
+    if (!sel) return;
+    sel.innerHTML = "";
+    for (const c of TZ_CHOICES) {
+      const opt = document.createElement("option");
+      opt.value = c.offset === null ? "auto" : String(c.offset);
+      opt.textContent = c.label();
+      sel.appendChild(opt);
+    }
+    sel.value = TZ_OFFSET === null ? "auto" : String(TZ_OFFSET);
+  }
+
+  loadTzPref();
+
+  function parseUtcLike(value) {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "number") {
+      // Heuristic: assume seconds if under ms range.
+      return new Date(value < 1e12 ? value * 1000 : value);
+    }
+    if (typeof value === "string") {
+      const s = value.trim();
+      if (!s) return null;
+      // Accept filenames like 20260201T152158Z
+      const m = s.match(
+        /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/
+      );
+      if (m) {
+        const [, y, mo, d, h, mi, se] = m;
+        return new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +se));
+      }
+      const parsed = Date.parse(s);
+      if (!Number.isNaN(parsed)) return new Date(parsed);
+    }
+    return null;
+  }
+
+  function fmtLocal(value, options) {
+    const dt = parseUtcLike(value);
+    if (!dt) return "";
+    if (TZ_OFFSET === null) {
+      return new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "medium",
+        ...options,
+      }).format(dt);
+    }
+    // Apply manual offset, then format in UTC to avoid host TZ double-shift.
+    const shifted = new Date(dt.getTime() + TZ_OFFSET * 3600 * 1000);
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "medium",
+      timeZone: "UTC",
+      ...options,
+    }).format(shifted);
+  }
+</script>

@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package timelapse.worker.v1;
+
+// Basic worker control plane for edge capture.
+
+service Worker {
+  // ONVIF describe (single device, synchronous).
+  rpc Discover(DiscoverRequest) returns (DiscoverResponse);
+
+  // Start/stop capture for a registered camera.
+  rpc StartCapture(StartCaptureRequest) returns (StartCaptureResponse);
+  rpc StopCapture(StopCaptureRequest) returns (StopCaptureResponse);
+
+  // Camera status (lightweight).
+  rpc CaptureStatus(CaptureStatusRequest) returns (CaptureStatusResponse);
+
+  // Latest snapshot metadata (bytes can be fetched via signed URL or HTTP gateway).
+  rpc LatestSnapshotMeta(LatestSnapshotMetaRequest) returns (LatestSnapshotMetaResponse);
+
+  // Worker heartbeat stream; control-plane subscribes to stay under 10s freshness.
+  rpc Heartbeat(stream HeartbeatRequest) returns (stream HeartbeatResponse);
+}
+
+message DiscoverRequest {
+  string host = 1;
+  string username = 2;
+  string password = 3;
+  uint32 port = 4; // default 80
+}
+
+message DiscoverResponse {
+  string make = 1;
+  string model = 2;
+  string firmware = 3;
+  string serial = 4;
+  string rtsp_uri = 5;
+  string snapshot_uri = 6;
+  uint32 width = 7;
+  uint32 height = 8;
+  string profile_token = 9;
+  string mac = 10;
+}
+
+message StartCaptureRequest {
+  uint32 id = 1;
+  string name = 2;
+  uint32 interval_seconds = 3;
+  string username = 4;
+  string password = 5;
+  string rtsp_uri = 6;
+  string mac = 7;
+}
+
+message StartCaptureResponse { bool ok = 1; }
+
+message StopCaptureRequest { uint32 id = 1; }
+
+message StopCaptureResponse { bool ok = 1; }
+
+message CaptureStatusRequest { uint32 id = 1; }
+
+message CaptureStatusResponse {
+  uint32 id = 1;
+  bool running = 2;
+  string name = 3;
+  string last_ip = 4;
+}
+
+message LatestSnapshotMetaRequest { string name = 1; }
+
+message LatestSnapshotMetaResponse {
+  string file = 1;
+  uint64 size = 2;
+  double modified_ts = 3;
+  string path = 4;
+}
+
+message HeartbeatRequest {
+  // empty for now; could carry node info if needed from server-initiated calls
+}
+
+message CameraHeartbeat {
+  uint32 id = 1;
+  string name = 2;
+  bool running = 3;
+  double last_frame_ts = 4;
+  string last_error = 5;
+  string last_ip = 6;
+  string mac = 7;
+}
+
+message HeartbeatResponse {
+  // node-level metrics can be added later
+  repeated CameraHeartbeat cameras = 1;
+}

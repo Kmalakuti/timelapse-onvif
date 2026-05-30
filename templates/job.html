@@ -1,0 +1,59 @@
+﻿<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Render Job</title>
+  {% include "_style.html" %}
+  {% include "_tz.html" %}
+</head>
+<body>
+  <div class="page">
+    {% include "_nav.html" %}
+    <div class="topbar surface" style="margin-top:12px;">
+      <div class="brand">Render Job</div>
+      <span class="spacer"></span>
+      <a class="btn ghost" href="/renders">All Timelapses</a>
+      <a class="btn ghost" href="/">Back</a>
+    </div>
+
+    <div class="surface" style="padding:18px;">
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <div><b>Job:</b> <code>{{job.job_id}}</code></div>
+        <div><b>Camera:</b> {{job.camera_name}}</div>
+        <div><b>Range:</b>
+          <span class="ts" data-ts="{{job.start_ts}}">{{job.start_ts or "(auto)"}}</span>
+          ?
+          <span class="ts" data-ts="{{job.end_ts}}">{{job.end_ts or "(auto)"}}</span>
+        </div>
+        <div><b>FPS:</b> {{job.fps}}</div>
+        <div><b>Status:</b> <span class="pill">{{job.status}}</span></div>
+      </div>
+
+      {% if job.status == "done" %}
+        <p style="margin-top:14px;"><a class="btn primary" href="/api/render/{{job.job_id}}/download">Download MP4</a></p>
+      {% elif job.status == "error" %}
+        <p style="color:#fca5a5; font-weight:600; margin-top:14px;"><b>Error:</b> {{job.error}}</p>
+      {% elif job.status == "interrupted" %}
+        <p class="muted" style="margin-top:14px;">Render was interrupted during restart. Requeue manually to continue.</p>
+      {% else %}
+        <p class="muted" style="margin-top:14px;">Rendering... this page will refresh.</p>
+        <script>setTimeout(()=>location.reload(), 2000);</script>
+      {% endif %}
+    </div>
+  </div>
+  <script>
+    function renderTimestamps() {
+      document.querySelectorAll(".ts").forEach(el => {
+        const raw = el.dataset.ts;
+        if (raw && raw.trim()) {
+          const pretty = fmtLocal(raw) || raw;
+          el.textContent = pretty;
+        }
+      });
+    }
+    document.addEventListener("tz-change", renderTimestamps);
+    renderTimestamps();
+  </script>
+</body>
+</html>

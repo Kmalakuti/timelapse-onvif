@@ -1,0 +1,505 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Timelapse Cameras</title>
+  {% include "_style.html" %}
+  <style>
+    .cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; }
+    .camera-card { position: relative; display:flex; flex-direction:column; gap:0; border-radius: var(--radius-lg); border:1px solid var(--border); background:#0b0f18; box-shadow: var(--shadow); overflow:hidden; }
+    .thumb { position:relative; width:100%; min-height:240px; overflow:hidden; background:#05070d; display:flex; align-items:center; justify-content:center; }
+    .thumb img { width:100%; height:100%; object-fit:cover; background:#05070d; }
+    .overlay { position:absolute; left:0; right:0; display:flex; padding:10px 12px; color:var(--text); pointer-events:none; }
+    .overlay.top { top:0; justify-content:space-between; align-items:center; background:linear-gradient(180deg, rgba(0,0,0,0.65), rgba(0,0,0,0)); }
+    .overlay.bottom { bottom:0; justify-content:space-between; align-items:flex-end; background:linear-gradient(0deg, rgba(0,0,0,0.7), rgba(0,0,0,0)); }
+    .name-line { display:flex; align-items:center; gap:10px; font-weight:700; text-shadow:0 1px 2px #000; }
+    .health-line { display:flex; align-items:center; gap:10px; font-size:13px; color:#cfd5df; }
+    .flag { width:14px; height:14px; border-radius:999px; display:inline-block; border:1px solid rgba(255,255,255,0.5); }
+    .flag.ok { background:#4ade80; border-color:#9ae6b4; }
+    .flag.warn { background:#fbbf24; border-color:#fcd34d; }
+    .flag.bad { background:#f87171; border-color:#fecdd3; }
+    .flag.off { background:#6b7280; border-color:#9aa3b3; }
+    .overlay-actions { display:flex; gap:8px; pointer-events:auto; margin-left:auto; }
+    .icon-btn {
+      width:36px; height:36px;
+      border-radius:10px; border:1px solid var(--border);
+      background:rgba(0,0,0,0.55); color:var(--text);
+      font-size:16px; cursor:pointer;
+      transition: border-color 0.15s ease, color 0.15s ease;
+      display:flex; align-items:center; justify-content:center;
+      line-height: 1;
+    }
+    .icon-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+    .card-details { padding:12px 14px; background:#0c111c; border-top:1px solid var(--border); }
+    .card-details summary { cursor:pointer; font-weight:600; color:#cbd2df; }
+    .card-details[open] summary { color:#e3e6ec; }
+    .meta { display:flex; flex-direction:column; gap:8px; min-width:0; color:#c0c6d3; }
+    .subtitle { color:#97a1b3; font-size:13px; }
+    .probe-log { margin-top:8px; font-family:monospace; white-space: pre-wrap; color:#b5bdcc; }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .actions form { margin:0; display:inline; }
+    .actions .btn { padding:9px 12px; }
+
+    /* Neutralize blue accents to grey/white */
+    :root { --accent:#d5d8df; --accent-strong:#f7f8fa; }
+    a { color: var(--text); }
+    a:hover { color:#f7f8fa; }
+    .btn:hover { border-color: var(--accent); color:#f7f8fa; box-shadow:0 10px 30px rgba(255,255,255,0.10); }
+    .icon-btn:hover { border-color: var(--accent); color:#f7f8fa; }
+    table a { color: var(--text); }
+    table a:hover { color:#f7f8fa; }
+    table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* Collapsible panel for advanced/worker status */
+    .collapsible { overflow:hidden; }
+    .collapsible summary { list-style: none; cursor: pointer; display:flex; align-items:center; gap:12px; padding:14px 16px; }
+    .collapsible summary::-webkit-details-marker { display:none; }
+    .collapsible .summary-label { display:flex; flex-direction:column; gap:2px; }
+    .collapsible .summary-title { font-weight:700; }
+    .collapsible .summary-sub { color: var(--muted); font-size:13px; }
+    .collapsible .chevron { margin-left:auto; transition: transform 0.18s ease; }
+    .collapsible[open] .chevron { transform: rotate(180deg); }
+    .collapsible-body { padding: 0 16px 16px; border-top:1px solid var(--border); }
+    .collapsible .summary-action { color: var(--muted); font-size:13px; }
+    .btn.tiny { padding:6px 8px; font-size:12px; }
+    .icon-btn.tiny { width:26px; height:26px; font-size:12px; }
+    .actions-cell { white-space: nowrap; }
+    .probe-card { background: rgba(255,255,255,0.03); border:1px solid var(--border); border-radius: var(--radius-md); padding:12px; }
+    .probe-grid { display:grid; grid-template-columns: 140px 1fr; gap:6px 10px; }
+    .probe-grid .label { text-transform: uppercase; letter-spacing:0.04em; font-size:11px; color: var(--muted); }
+    .probe-grid .value { font-size:13px; color: var(--text); }
+    .probe-pre { margin:0; white-space: pre-wrap; font-family: monospace; font-size:13px; color: var(--text); }
+
+    @media (max-width: 700px) { .cards { gap:12px; } .thumb { min-height:200px; } }
+
+    /* Modal viewer */
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.75); display:none; align-items:center; justify-content:center; z-index:9999; }
+    .modal-backdrop.show { display:flex; }
+    .modal-content { position:relative; max-width:90vw; max-height:90vh; border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 18px 60px rgba(0,0,0,0.45); background:#0b0f18; }
+    .modal-content img { display:block; max-width:90vw; max-height:90vh; object-fit:contain; background:#05070d; }
+    .modal-timestamp { position:absolute; left:14px; bottom:12px; padding:6px 10px; border-radius:8px; background:rgba(0,0,0,0.65); color:#e5e9f2; font-size:14px; font-weight:600; }
+    .modal-top { position:absolute; top:10px; left:12px; display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px; background:rgba(0,0,0,0.55); color:var(--text); font-weight:700; }
+    .modal-top .flag { width:14px; height:14px; border-radius:999px; border:1px solid rgba(255,255,255,0.5); }
+    .modal-close { position:absolute; top:8px; right:10px; background:rgba(0,0,0,0.55); color:#fff; border:1px solid var(--border); border-radius:10px; width:34px; height:34px; display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer; }
+    .thumb.clickable { cursor:pointer; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    {% include "_nav.html" %}
+
+    <div class="cards">
+    {% for c in cameras %}
+      <div class="camera-card" data-cam="{{c.id}}" data-name="{{c.name}}" data-interval="{{c.interval_seconds}}" data-running="{{ c.running and '1' or '0' }}">
+        <div class="thumb clickable" data-open-modal="{{c.id}}">
+          <img src="/camera/{{c.id}}/thumb.jpg?ts={{c.updated_at}}" loading="lazy" onerror="this.style.display='none'">
+
+          <div class="overlay top">
+            <div class="name-line">
+              <span class="flag off" id="health-flag-{{c.id}}"></span>
+              <span class="name">{{c.name}}</span>
+            </div>
+          </div>
+
+          <div class="overlay bottom">
+            <div class="health-line">
+              <span id="health-text-{{c.id}}">Checking…</span>
+              <small id="health-time-{{c.id}}"></small>
+            </div>
+            <div class="overlay-actions">
+              <form id="toggle-form-{{c.id}}" action="/camera/{{c.id}}/{{ c.running and 'stop' or 'start' }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{csrf_token}}"/>
+                <button class="icon-btn" type="submit" title="{{ c.running and 'Stop' or 'Start' }}" id="toggle-btn-{{c.id}}">{{ c.running and "■" or "▶" }}</button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <details class="card-details">
+          <summary>Details</summary>
+          <div class="meta">
+            <div class="subtitle">{{c.host}} • Interval {{c.interval_seconds}}s • RTSP {% if c.rtsp_uri %}set{% else %}missing{% endif %}</div>
+            <div id="reg-{{c.id}}" class="muted" style="font-size:13px;">
+              Worker: —
+            </div>
+            <div id="probe_{{c.id}}" class="probe-log"></div>
+          </div>
+        </details>
+      </div>
+    {% endfor %}
+    </div>
+
+    <script>
+    async function probe(id){
+      const el = document.getElementById("probe_"+id);
+      el.textContent = "Probing ONVIF (this can take a few seconds)...";
+      try {
+        const r = await fetch(`/camera/${id}/probe_onvif`, {method:"POST", headers: {"x-csrf-token": "{{csrf_token}}"}});        
+        const txt = await r.text();
+        el.textContent = (r.ok ? "Probe OK. Saved RTSP/Snapshot.\n\n" : "Probe failed.\n\n") + txt;
+      } catch (e) {
+        el.textContent = "Probe request failed: " + e;
+      }
+    }
+    </script>
+
+    <script>
+    // Timezone selector (already in nav)
+    const tzsel = document.getElementById("tz-control");
+    const syncTzSelect = () => { if (tzsel) { tzsel.value = TZ_OFFSET === null ? "auto" : String(TZ_OFFSET); } };
+    if (tzsel) {
+      populateTzSelect(tzsel);
+      syncTzSelect();
+      tzsel.addEventListener("change", () => {
+        const v = tzsel.value;
+        setTzOffset(v === "auto" ? null : Number(v));
+        syncTzSelect();
+        refreshHealth();
+        refreshRegistry();
+      });
+    }
+    document.addEventListener("tz-change", () => {
+      populateTzSelect(tzsel);
+      syncTzSelect();
+      refreshHealth();
+      refreshRegistry();
+    });
+    </script>
+
+    <script>
+    const CAM_INTERVALS = {
+    {% for c in cameras %} {{c.id}}: {{c.interval_seconds}}{% if not loop.last %},{% endif %}
+    {% endfor %}
+    };
+
+    function calcFlag(intervalSec, ageSec, running) {
+      const interval = Math.max(1, Number(intervalSec) || 60);
+      if (!running) return "off";
+      const age = Number(ageSec);
+      if (!Number.isFinite(age)) return "warn";
+      if (age <= interval * 1.2) return "ok";
+      if (age > interval * 5) return "bad";
+      if (age > interval * 2) return "warn";
+      return "ok";
+    }
+
+    function setFlag(el, status) {
+      if (!el) return;
+      const base = el.classList.contains("status-dot") ? "status-dot" : "flag";
+      el.className = `${base} ${status}`;
+    }
+
+    function setToggle(camId, running) {
+      const btn = document.getElementById(`toggle-btn-${camId}`);
+      const form = document.getElementById(`toggle-form-${camId}`);
+      if (btn) {
+        btn.textContent = running ? "■" : "▶";
+        btn.title = running ? "Stop" : "Start";
+      }
+      if (form) form.action = `/camera/${camId}/${running ? "stop" : "start"}`;
+      const card = document.querySelector(`.camera-card[data-cam="${camId}"]`);
+      if (card) card.dataset.running = running ? "1" : "0";
+    }
+
+    function updateRegDetail(camId, running, ageSeconds, lastIp) {
+      const reg = document.getElementById(`reg-${camId}`);
+      if (!reg) return;
+      if (lastIp !== undefined) {
+        reg.dataset.lastIp = lastIp || "n/a";
+      }
+      const ipVal = reg.dataset.lastIp || "n/a";
+      const ageTxt = Number.isFinite(ageSeconds) ? `${Math.round(ageSeconds)}s ago` : "n/a";
+      reg.textContent = `Worker: ${running ? "RUNNING" : "STOPPED"} • IP ${ipVal} • last frame ${ageTxt}`;
+    }
+
+    async function refreshHealth() {
+      try {
+        const r = await fetch('/api/health', { cache: 'no-store' });
+        if (!r.ok) return;
+        const data = await r.json();
+        for (const c of data.cameras || []) {
+          const intervalSec = CAM_INTERVALS[c.id] || 60;
+          const age = c.age_seconds ?? null;
+          const running = c.running !== undefined ? !!c.running : c.level !== 'off';
+          const status = calcFlag(intervalSec, age, running);
+
+          setFlag(document.getElementById(`health-flag-${c.id}`), status);
+          setToggle(c.id, running);
+
+          const htext = document.getElementById(`health-text-${c.id}`);
+          const htime = document.getElementById(`health-time-${c.id}`);
+          if (htext) htext.textContent = c.message || "-";
+          if (htime) htime.textContent = c.last_snapshot ? fmtLocal(c.last_snapshot) : "";
+          const card = document.querySelector(`.camera-card[data-cam='${c.id}']`);
+          if (card) card.dataset.lastSnapshot = c.last_snapshot || "";
+
+          updateRegDetail(c.id, running, age);
+        }
+      } catch (e) {
+        // ignore poll errors
+      }
+    }
+
+    refreshHealth();
+    setInterval(refreshHealth, 15000);
+    </script>
+    <script>
+    window.REGISTRY_CACHE = [];
+    // Optimistic toggle: apply immediately, then refresh API state
+    function bindToggleForms() {
+      document.querySelectorAll('[id^="toggle-form-"]').forEach(form => {
+        if (form.dataset.bound === "1") return;
+        form.dataset.bound = "1";
+        // Prevent clicks on start/stop buttons from bubbling and opening the modal
+        form.addEventListener("click", (e) => e.stopPropagation());
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const camId = form.id.replace("toggle-form-","") || form.dataset.cam;
+          const card = form.closest(".camera-card");
+          const running = card && card.dataset.running === "1";
+          const nextRunning = !running;
+          const actionUrl = form.action; // capture before we flip
+          const btn = form.querySelector(".icon-btn");
+          if (btn) btn.disabled = true;
+
+          // Optimistic visuals
+          setFlag(document.getElementById(`health-flag-${camId}`), nextRunning ? "warn" : "off");
+          setToggle(camId, nextRunning);
+          updateRegDetail(camId, nextRunning, null);
+
+          try {
+            const fd = new FormData(form);
+            await fetch(actionUrl, { method: "POST", body: fd, redirect: "manual" });
+          } catch (err) {
+            // revert optimistic flag on failure
+            setToggle(camId, running);
+          } finally {
+            if (btn) btn.disabled = false;
+            refreshHealth();
+            refreshRegistry();
+          }
+        });
+      });
+    }
+    bindToggleForms();
+    </script>
+
+    <!-- Modal viewer -->
+    <div class="modal-backdrop" id="frame-modal">
+      <div class="modal-content">
+        <button class="modal-close" aria-label="Close" id="modal-close-btn">&times;</button>
+        <img id="modal-img" alt="Camera frame">
+        <div class="modal-top"><span class="flag off" id="modal-flag"></span><span id="modal-name"></span></div>
+        <div class="modal-timestamp" id="modal-ts"></div>
+      </div>
+    </div>
+
+    <script>
+    const modal = document.getElementById("frame-modal");
+    const modalImg = document.getElementById("modal-img");
+    const modalTs = document.getElementById("modal-ts");
+    const modalClose = document.getElementById("modal-close-btn");
+    const modalFlag = document.getElementById("modal-flag");
+    const modalName = document.getElementById("modal-name");
+    let modalTimer = null;
+
+    function fmtTs(val) {
+      if (!val) return "No timestamp";
+      try { return fmtLocal(val); } catch(e) { return String(val); }
+    }
+
+    function stopModalRefresh() {
+      if (modalTimer) {
+        clearTimeout(modalTimer);
+        modalTimer = null;
+      }
+    }
+
+    // Fullscreen modal refresh: pulls latest JPEG and timestamp from cached registry rows.
+    async function refreshModal(camId) {
+      if (!modal || !modal.classList.contains("show")) return;
+      const bust = Date.now();
+      modalImg.src = `/camera/${camId}/latest.jpg?ts=${bust}`;
+      try {
+        const rows = window.REGISTRY_CACHE || [];
+        const row = rows.find(r => Number(r.id) === Number(camId));
+        if (row && row.last_frame_ts) {
+          modalTs.textContent = fmtTs(row.last_frame_ts);
+        }
+      } catch (_) {}
+      modalTimer = setTimeout(() => refreshModal(camId), 5000);
+    }
+
+    function openModal(camId) {
+      if (!modal || !modalImg || !modalTs) return;
+      const card = document.querySelector(`.camera-card[data-cam='${camId}']`);
+      const ts = card ? card.dataset.lastSnapshot : "";
+      if (modalName) modalName.textContent = card ? (card.dataset.name || `Camera ${camId}`) : `Camera ${camId}`;
+      if (modalFlag) {
+        const flag = document.getElementById(`health-flag-${camId}`);
+        modalFlag.className = flag ? flag.className : "flag off";
+      }
+      stopModalRefresh();
+      modalImg.src = `/camera/${camId}/latest.jpg?ts=${Date.now()}`;
+      modalTs.textContent = fmtTs(ts);
+      modal.classList.add("show");
+      refreshModal(camId);
+    }
+
+    function closeModal() {
+      if (modal) modal.classList.remove("show");
+      if (modalImg) modalImg.src = "";
+      stopModalRefresh();
+    }
+
+    document.querySelectorAll("[data-open-modal]").forEach(el => {
+      el.addEventListener("click", () => openModal(el.dataset.openModal));
+    });
+    if (modal) {
+      modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+    }
+    if (modalClose) modalClose.addEventListener("click", closeModal);
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+    </script>
+
+    <details class="surface worker-table collapsible" id="worker-panel" style="margin-top:22px;">
+      <summary>
+        <span class="flag off" id="registry-status-flag"></span>
+        <div class="summary-label">
+          <span class="summary-title">System Health</span>
+          <span class="summary-sub" id="registry-summary-sub">Advanced: registry &amp; IP history</span>
+        </div>
+        <span class="chevron">&#9662;</span>
+      </summary>
+      <div class="collapsible-body">
+        <div style="margin-top:8px;"></div>
+        <div id="registry"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0 0; gap:12px; flex-wrap:wrap;">
+          <a class="btn ghost" style="padding:9px 12px; font-size:13px;" href="/add">Add Camera</a>
+          <a class="btn ghost" style="padding:8px 12px; font-size:13px;" href="/api/registry/history.csv">Download IP history (CSV)</a>
+        </div>
+      </div>
+    </details>
+    <script>
+    function formatProbe(probe) {
+      if (!probe) return '<div class="muted" style="font-size:13px;">No ONVIF data yet. Run Probe.</div>';
+      try {
+        const obj = typeof probe === "string" ? JSON.parse(probe) : probe;
+        const entries = Object.entries(obj || {});
+        if (!entries.length) return '<div class="muted" style="font-size:13px;">No ONVIF data yet. Run Probe.</div>';
+        return `<div class="probe-card"><div class="probe-grid">${
+          entries.map(([k,v]) => `<div class="label">${k}</div><div class="value">${v ?? ""}</div>`).join("")
+        }</div></div>`;
+      } catch(e){
+        return `<div class="probe-card"><pre class="probe-pre">${probe}</pre></div>`;
+      }
+    }
+
+    function overallStatus(statuses) {
+      let hasBad = false, hasWarn = false, hasOk = false;
+      for (const s of statuses) {
+        if (s === "bad") { hasBad = true; break; }
+        if (s === "warn") hasWarn = true;
+        if (s === "ok") hasOk = true;
+      }
+      if (hasBad) return "bad";    // red overrides everything
+      if (hasOk) return "ok";      // any green with no red -> green
+      if (hasWarn) return "warn";  // yellow only when no red/green
+      return "off";                // otherwise gray
+    }
+
+    function summarizeStatus(status, counts, total) {
+      if (!counts) return "";
+      switch (status) {
+        case "bad": return `Critical: ${total} workers, ${counts.bad} red`;
+        case "warn": return `Warnings: ${total} workers, ${counts.warn} yellow`;
+        case "ok": return `Healthy: ${total} workers, ${counts.ok} green`;
+        default: return `Idle: ${total} workers`;
+      }
+    }
+
+    function updateRegistrySummary(status, total, counts) {
+      setFlag(document.getElementById('registry-status-flag'), status);
+      const sub = document.getElementById('registry-summary-sub');
+      if (sub) sub.textContent = summarizeStatus(status, counts, total || 0);
+    }
+
+    async function refreshRegistry() {
+      try {
+        const r = await fetch('/api/registry', {cache:'no-store'});
+        if(!r.ok) return;
+        const data = await r.json();
+        window.REGISTRY_CACHE = data;
+        const statuses = [];
+        const counts = { bad:0, warn:0, ok:0, off:0 };
+        let html = '<div class="table-wrap"><table><tr><th></th><th>ID</th><th>Name</th><th>Make</th><th>Model</th><th>Last IP</th><th>MAC</th><th>Last Frame (Local)</th><th>Running</th><th>Actions</th></tr>';
+        for (const row of data) {
+          const interval = CAM_INTERVALS[row.id] || 60;
+          const tsNum = (row.last_frame_ts !== null && row.last_frame_ts !== undefined) ? Number(row.last_frame_ts) : null;
+          const age = Number.isFinite(tsNum) ? (Date.now()/1000 - tsNum) : null;
+          const ts = Number.isFinite(tsNum) ? fmtLocal(tsNum) : "";
+          const running = !!row.running;
+          const status = calcFlag(interval, age, running);
+          statuses.push(status);
+          counts[status] = (counts[status] || 0) + 1;
+          const probe = row.last_probe || null;
+          updateRegDetail(row.id, running, age, row.last_ip);
+          html += `<tr class="reg-row" data-cam="${row.id ?? ''}">
+            <td><button class="icon-btn tiny toggle-probe" data-toggle="${row.id ?? ''}" title="Toggle details">+</button></td>
+            <td>${row.id ?? ""}</td>
+            <td>${row.name||""}</td>
+            <td>${row.make||""}</td>
+            <td>${row.model||""}</td>
+            <td>${row.last_ip||""}</td>
+            <td>${row.mac||""}</td>
+            <td>${ts}</td>
+            <td>${running ? "Yes":"No"}</td>
+            <td class="actions-cell">
+              <a class="btn ghost tiny" href="/camera/${row.id}/edit">Edit</a>
+              <button class="btn ghost tiny" type="button" data-probe-btn="${row.id}">Probe</button>
+              <form style="display:inline;" action="/camera/${row.id}/delete" method="post" onsubmit="return confirm('Delete camera?');">
+                <input type="hidden" name="csrf_token" value="{{csrf_token}}"/>
+                <button class="btn tiny" type="submit">Delete</button>
+              </form>
+            </td>
+          </tr>`;
+          const probeHtml = formatProbe(probe);
+          html += `<tr class="probe-row" data-probe-row="${row.id ?? ''}" style="display:none;"><td colspan="10">${probeHtml}</td></tr>`;
+        }
+        html += '</table></div>';
+        document.getElementById('registry').innerHTML = html;
+        updateRegistrySummary(overallStatus(statuses), data.length, counts);
+
+        // bind toggles and probe buttons after render
+        document.querySelectorAll('.toggle-probe').forEach(btn => {
+          btn.onclick = () => {
+            const id = btn.dataset.toggle;
+            const row = document.querySelector(`[data-probe-row='${id}']`);
+            if (row) {
+              const showing = row.style.display !== "none";
+              row.style.display = showing ? "none" : "table-row";
+              btn.textContent = showing ? "+" : "–";
+            }
+          };
+        });
+        document.querySelectorAll('[data-probe-btn]').forEach(btn => {
+          btn.onclick = async () => {
+            const id = btn.dataset.probeBtn;
+            btn.disabled = true;
+            btn.textContent = "…";
+            try {
+              await fetch(`/camera/${id}/probe_onvif`, { method:"POST", headers: {"x-csrf-token": "{{csrf_token}}"} });
+            } catch(e){}
+            btn.textContent = "Probe";
+            btn.disabled = false;
+            refreshRegistry();
+          };
+        });
+      } catch(e){}
+    }
+    refreshRegistry();
+    setInterval(refreshRegistry, 10000);
+    </script>
+  </div>
+</body>
+</html>

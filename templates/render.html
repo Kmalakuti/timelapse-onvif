@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Render Timelapse</title>
+  {% include "_style.html" %}
+
+</head>
+<body>
+  <div class="page">
+    {% include "_nav.html" %}
+    <div class="topbar surface" style="margin-top:12px;">
+      <div class="brand">Render Timelapse</div>
+      <span class="spacer"></span>
+      <a class="btn ghost" href="/renders">All Timelapses</a>
+      <a class="btn ghost" href="/">Back</a>
+    </div>
+
+    <div class="surface" style="padding:22px;">
+      <form action="/render" method="post" class="form-grid">
+        <input type="hidden" name="csrf_token" value="{{csrf_token}}"/>
+        <div>
+          <label>Camera</label>
+          <select name="camera_id" required>
+            {% for c in cameras %}
+              <option value="{{c.id}}">{{c.name}} ({{c.host}})</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label>Start (optional)</label>
+          <input name="start_ts" placeholder="2026-02-01T15:00:00Z">
+        </div>
+
+        <div>
+          <label>End (optional)</label>
+          <input name="end_ts" placeholder="2026-02-01T18:00:00Z">
+        </div>
+
+        <div>
+          <label>Video FPS</label>
+          <input name="fps" value="30">
+        </div>
+
+        <div>
+          <label><input type="checkbox" name="filter_bad" checked> Filter obvious bad frames (size outliers)</label>
+        </div>
+
+        <div>
+          <label><input type="checkbox" name="overlay_name" checked> Overlay camera name</label>
+        </div>
+
+        <div>
+          <label><input type="checkbox" name="overlay_timestamp"> Overlay timestamp (slower)</label>
+        </div>
+
+        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+          <button class="btn primary" type="submit">Start Render</button>
+          <a class="btn ghost" href="/">Cancel</a>
+        </div>
+      </form>
+
+      <p class="muted" style="margin-top:12px;">Tip: leave Start/End blank to render the full available range.</p>
+    </div>
+  </div>
+</body>
+</html>

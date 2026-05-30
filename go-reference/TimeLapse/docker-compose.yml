@@ -1,0 +1,57 @@
+services:
+  # Go Backend API Server
+  timelapse-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: timelapse-dev
+    volumes:
+      # Mount source code for live development
+      - .:/app
+      # Mount local data directory for captures
+      - ./data:/data
+      # Persist Go modules cache
+      - go-modules:/go/pkg/mod
+    ports:
+      - "8000:8000"  # API server
+    environment:
+      - CGO_ENABLED=0
+    working_dir: /app
+    command: go run cmd/timelapse-server/main.go -config configs/server.yaml
+    networks:
+      - timelapse-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # React Frontend (nginx serving pre-built static files)
+  timelapse-frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: timelapse-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      timelapse-dev:
+        condition: service_healthy
+    networks:
+      - timelapse-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5173/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  go-modules:
+
+networks:
+  timelapse-network:
+    driver: bridge
