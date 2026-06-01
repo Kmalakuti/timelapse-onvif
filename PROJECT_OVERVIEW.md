@@ -25,7 +25,7 @@ A FastAPI-based LAN tool for managing IP cameras, capturing timelapse JPEGs with
 5) Render: `/render` selects time range, fps, overlays; render job runs in a thread and outputs MP4 for download at `/api/render/{job}/download`.
 
 ## Running Locally
-- Docker: `docker compose up --build` (binds 8080, mounts `C:/timelapse-data` to `/data`; populate `.env` for secrets).
+- Docker: `docker compose up --build` (defaults to port 8080 and `C:/timelapse-data:/data`; override with `WEB_PORT`, worker port vars, and `TIMELAPSE_DATA_DIR`; populate `.env` for secrets).
 - Bare metal: install `ffmpeg` + `pip install -r requirements.txt`, set env vars, then `uvicorn app.main:app --reload --port 8080`.
 
 ## Notable Limitations

@@ -1,32 +1,32 @@
 services:
   timelapse:
-    container_name: timelapse-clean-web
+    container_name: ${WEB_CONTAINER_NAME:-timelapse-clean-web}
     ports:
-      - "18080:8080"
+      - "${WEB_PORT:-18080}:8080"
     volumes:
-      - "C:/timelapse-data-dev:/data"
+      - "${TIMELAPSE_DATA_DIR:-C:/timelapse-data-dev}:/data"
 
   worker:
-    container_name: timelapse-clean-worker
+    container_name: ${WORKER_CONTAINER_NAME:-timelapse-clean-worker}
     ports:
-      - "18081:8081"
+      - "${WORKER_REST_PORT:-18081}:8081"
     volumes:
-      - "C:/timelapse-data-dev:/data"
+      - "${TIMELAPSE_DATA_DIR:-C:/timelapse-data-dev}:/data"
 
   worker-grpc:
-    container_name: timelapse-clean-worker-grpc
+    container_name: ${WORKER_GRPC_CONTAINER_NAME:-timelapse-clean-worker-grpc}
     ports:
-      - "15051:50051"
+      - "${WORKER_GRPC_PORT:-15051}:50051"
     volumes:
-      - "C:/timelapse-data-dev:/data"
+      - "${TIMELAPSE_DATA_DIR:-C:/timelapse-data-dev}:/data"
 
   worker-gateway:
-    container_name: timelapse-clean-worker-gateway
+    container_name: ${WORKER_GATEWAY_CONTAINER_NAME:-timelapse-clean-worker-gateway}
     environment:
-      - WORKER_GRPC_ADDR=worker-grpc:50051
-      - WORKER_REST_URL=http://worker:8081
+      - WORKER_GRPC_ADDR=${WORKER_GRPC_ADDR:-worker-grpc:50051}
+      - WORKER_REST_URL=${WORKER_REST_URL:-http://worker:8081}
     ports:
-      - "18082:8082"
+      - "${WORKER_GATEWAY_PORT:-18082}:8082"
     volumes:
-      - "C:/timelapse-data-dev:/data"
+      - "${TIMELAPSE_DATA_DIR:-C:/timelapse-data-dev}:/data"
 

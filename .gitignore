@@ -5,11 +5,17 @@
 
 # Runtime data
 .timelapse-data/
+.timelapse-data-split/
+.minio-data-dev/
+.minio-verify/
 data/
 screens/
 *.sqlite
 *.sqlite3
 *.db
+
+# Node/browser test artifacts
+node_modules/
 
 # Python/build artifacts
 __pycache__/

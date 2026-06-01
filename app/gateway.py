@@ -3,14 +3,20 @@ HTTP gateway that forwards to gRPC worker service, preserving the REST surface
 used by the UI/worker_client. Set WORKER_GRPC_ADDR (default: localhost:50051).
 """
 import os
+import time
+from threading import Lock
+
 import grpc
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from app import worker_pb2 as pb
 from app import worker_pb2_grpc as stubs
 
 WORKER_GRPC_ADDR = os.getenv("WORKER_GRPC_ADDR", "localhost:50051")
+LATEST_JPG_CACHE_SECONDS = float(os.getenv("LATEST_JPG_CACHE_SECONDS", "5"))
+LATEST_JPG_CACHE = {}
+LATEST_JPG_CACHE_LOCK = Lock()
 
 app = FastAPI(title="Timelapse Worker Gateway", version="0.1.0")
 
@@ -21,7 +27,7 @@ def _stub():
 
 
 @app.post("/api/discover")
-async def discover(body: dict):
+def discover(body: dict):
     stub = _stub()
     try:
         resp = stub.Discover(
@@ -49,7 +55,7 @@ async def discover(body: dict):
 
 
 @app.post("/api/camera/start")
-async def start_camera(body: dict):
+def start_camera(body: dict):
     stub = _stub()
     required = ["id", "name", "interval_seconds", "username", "password", "rtsp_uri"]
     missing = [k for k in required if k not in body]
@@ -73,7 +79,7 @@ async def start_camera(body: dict):
 
 
 @app.post("/api/camera/stop")
-async def stop_camera(body: dict):
+def stop_camera(body: dict):
     stub = _stub()
     if "id" not in body:
         raise HTTPException(status_code=400, detail="id is required")
@@ -85,7 +91,7 @@ async def stop_camera(body: dict):
 
 
 @app.get("/api/camera/status/{cam_id}")
-async def status(cam_id: int):
+def status(cam_id: int):
     stub = _stub()
     try:
         resp = stub.CaptureStatus(pb.CaptureStatusRequest(id=cam_id))
@@ -95,7 +101,7 @@ async def status(cam_id: int):
 
 
 @app.get("/api/camera/{cam_name}/latest")
-async def latest(cam_name: str):
+def latest(cam_name: str):
     # Metadata comes from gRPC; file is served by REST worker (8081) or shared storage.
     stub = _stub()
     try:
@@ -105,13 +111,39 @@ async def latest(cam_name: str):
         raise HTTPException(status_code=404 if exc.code() == grpc.StatusCode.NOT_FOUND else 502, detail=exc.details() or str(exc))
 
 
+@app.get("/api/camera/{cam_name}/latest.jpg")
+def latest_jpg(cam_name: str):
+    import requests
+
+    now = time.monotonic()
+    with LATEST_JPG_CACHE_LOCK:
+        cached = LATEST_JPG_CACHE.get(cam_name)
+    if cached and now - cached[0] < LATEST_JPG_CACHE_SECONDS:
+        return Response(content=cached[1], media_type=cached[2], headers={"Cache-Control": "no-store"})
+
+    base_rest = os.getenv("WORKER_REST_URL", "http://worker:8081")
+    try:
+        resp = requests.get(f"{base_rest}/api/camera/{cam_name}/latest.jpg", timeout=5)
+        if resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="no snapshots found")
+        resp.raise_for_status()
+        media_type = resp.headers.get("content-type", "image/jpeg")
+        with LATEST_JPG_CACHE_LOCK:
+            LATEST_JPG_CACHE[cam_name] = (now, resp.content, media_type)
+        return Response(content=resp.content, media_type=media_type, headers={"Cache-Control": "no-store"})
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @app.get("/api/health")
-async def health():
+def health():
     return {"ok": True, "grpc": WORKER_GRPC_ADDR}
 
 
 @app.get("/api/registry")
-async def registry():
+def registry():
     import requests
 
     base_rest = os.getenv("WORKER_REST_URL", "http://worker:8081")
@@ -127,10 +159,16 @@ async def registry():
     for r in rows:
         running = r.get("running")
         last_ip = r.get("last_ip")
+        last_frame_ts = r.get("last_frame_ts")
         try:
             st = stub.CaptureStatus(pb.CaptureStatusRequest(id=int(r["id"])))
             running = st.running
             last_ip = st.last_ip or last_ip
+        except Exception:
+            pass
+        try:
+            snap = stub.LatestSnapshotMeta(pb.LatestSnapshotMetaRequest(name=r.get("name", "")))
+            last_frame_ts = snap.modified_ts or last_frame_ts
         except Exception:
             pass
         out.append(
@@ -139,7 +177,7 @@ async def registry():
                 "name": r.get("name"),
                 "mac": r.get("mac"),
                 "last_ip": last_ip,
-                "last_frame_ts": r.get("last_frame_ts"),
+                "last_frame_ts": last_frame_ts,
                 "running": running,
                 "history": r.get("history", []),
             }
@@ -148,7 +186,7 @@ async def registry():
 
 
 @app.get("/api/registry/history/{cam_id}")
-async def registry_history(cam_id: int):
+def registry_history(cam_id: int):
     import requests
 
     base_rest = os.getenv("WORKER_REST_URL", "http://worker:8081")
@@ -161,7 +199,7 @@ async def registry_history(cam_id: int):
 
 
 @app.get("/api/registry/history.csv")
-async def registry_history_csv():
+def registry_history_csv():
     import requests
 
     base_rest = os.getenv("WORKER_REST_URL", "http://worker:8081")
@@ -174,7 +212,7 @@ async def registry_history_csv():
 
 
 @app.post("/api/registry/mac")
-async def registry_set_mac(body: dict):
+def registry_set_mac(body: dict):
     import requests
 
     base_rest = os.getenv("WORKER_REST_URL", "http://worker:8081")
@@ -187,7 +225,7 @@ async def registry_set_mac(body: dict):
 
 
 @app.delete("/api/registry/{cam_id}")
-async def registry_delete(cam_id: int):
+def registry_delete(cam_id: int):
     import requests
     base_rest = os.getenv("WORKER_REST_URL", "http://worker:8081")
     try:

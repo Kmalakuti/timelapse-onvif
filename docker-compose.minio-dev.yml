@@ -1,0 +1,50 @@
+# Phase 5.0 Ubuntu-local object storage only.
+# Keep this Compose project separate from production and the Windows edge stack.
+services:
+  minio:
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    container_name: ${MINIO_CONTAINER_NAME:-timelapse-minio-dev}
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-19000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-19001}:9001"
+    volumes:
+      - "${MINIO_DATA_DIR:-./.minio-data-dev}:/data"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio-bootstrap:
+    image: minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_UPLOADER_ACCESS_KEY: ${MINIO_UPLOADER_ACCESS_KEY}
+      MINIO_UPLOADER_SECRET_KEY: ${MINIO_UPLOADER_SECRET_KEY}
+    entrypoint: ["/scripts/bootstrap-minio-dev-container.sh"]
+    volumes:
+      - "./config/minio:/config:ro"
+      - "./scripts:/scripts:ro"
+
+  minio-client:
+    image: minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    profiles: ["tools"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_UPLOADER_ACCESS_KEY: ${MINIO_UPLOADER_ACCESS_KEY}
+      MINIO_UPLOADER_SECRET_KEY: ${MINIO_UPLOADER_SECRET_KEY}
+    entrypoint: ["/scripts/minio-dev-client.sh"]
+    volumes:
+      - "./scripts:/scripts:ro"
+      - "${MINIO_VERIFY_DIR:-./.minio-verify}:/verify"

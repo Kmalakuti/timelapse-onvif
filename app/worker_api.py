@@ -6,7 +6,7 @@ import time
 from typing import Dict, Optional, Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from app import capture
 from app import onvif_util

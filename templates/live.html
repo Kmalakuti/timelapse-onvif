@@ -138,10 +138,10 @@
       <label for="rate">Refresh</label>
       <select id="rate">
         <option value="800">0.8s</option>
-        <option value="1200" selected>1.2s</option>
+        <option value="1200">1.2s</option>
         <option value="2000">2s</option>
         <option value="3500">3.5s</option>
-        <option value="5000">5s</option>
+        <option value="5000" selected>5s</option>
       </select>
       <button type="button" id="refreshNow">Refresh now</button>
     </div>
@@ -182,7 +182,7 @@
   // That endpoint should use the smallest thing available (snapshot URI if configured),
   // and it avoids adding new ffmpeg processes for the grid view.
 
-  let refreshMs = 1200;
+  let refreshMs = 5000;
   const diagnoseEveryMs = 15000;
 
   const lastOk = new Map();
@@ -334,7 +334,7 @@
   // Controls
   const rate = document.getElementById("rate");
   rate.addEventListener("change", () => {
-    refreshMs = parseInt(rate.value || "1200", 10);
+    refreshMs = parseInt(rate.value || "5000", 10);
   });
 
   document.getElementById("refreshNow").addEventListener("click", () => {

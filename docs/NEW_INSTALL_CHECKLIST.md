@@ -3,7 +3,7 @@
 Follow this checklist when bringing up a fresh Timelapse deployment.
 
 ## 1) Prepare environment file
-- Copy `.env.example` to `.env`.
+- Copy `.env.example` to `.env`, or copy one of `env/*.env.example` to an ignored local env file for a specific deployment target.
 - Set admin login:
   - `ADMIN_USERNAME` — desired UI username.
   - `ADMIN_PASSWORD_HASH` — generate with `python -c "from app.auth import hash_password; print(hash_password('YourPassword'))"`.
@@ -14,7 +14,8 @@ Follow this checklist when bringing up a fresh Timelapse deployment.
   - `SESSION_HTTPS_ONLY=1` when behind HTTPS; keep `0` for local HTTP.
 
 ## 2) Data and storage
-- Ensure host data directory exists: `C:/timelapse-data` (mounted to `/data` in containers).
+- Ensure host data directory exists. `TIMELAPSE_DATA_DIR` defaults to `C:/timelapse-data` for Windows production and is mounted to `/data` in containers.
+- For side-by-side Windows dev, use `docker-compose.dev.yml` with `TIMELAPSE_DATA_DIR=C:/timelapse-data-dev`; do not point dev at the production data directory.
 - Database path (inside container) defaults to `/data/_state/timelapse.sqlite`; override with `DB_PATH` if relocating.
 
 ## 3) Service endpoints (only change if not using default docker-compose network)
@@ -36,7 +37,8 @@ Follow this checklist when bringing up a fresh Timelapse deployment.
 - `HEALTH_WARN_SECONDS` / `HEALTH_BAD_SECONDS` (web health view thresholds, defaults 120 / 600).
 
 ## 6) Bring up the stack
-- Build & start: `docker-compose up -d --build` (or `docker compose` depending on your CLI).
+- Build & start production-compatible defaults: `docker compose up -d --build`.
+- Build & start side-by-side Windows dev after filling `.env.dev-windows`: `docker compose --env-file .env.dev-windows -f docker-compose.yml -f docker-compose.dev.yml up -d --build timelapse worker worker-grpc worker-gateway`.
 - Verify containers: `docker ps`.
 - Quick checks:
   - Recent frames: `docker exec timelapse-worker-grpc sh -c "ls -1t /data | head"` (or per camera folder).

@@ -83,6 +83,33 @@ def registry() -> list:
         return []
 
 
+def is_remote() -> bool:
+    return _remote() is not None
+
+
+def latest_jpg(camera_name: str):
+    base = _remote()
+    if not base:
+        return None
+    resp = requests.get(f"{base}/api/camera/{camera_name}/latest.jpg", timeout=5)
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp
+
+
+
+def latest_snapshot_meta(camera_name: str) -> Optional[Dict]:
+    base = _remote()
+    if not base:
+        return None
+    resp = requests.get(f"{base}/api/camera/{camera_name}/latest", timeout=5)
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp.json()
+
+
 def update_registry_mac(cam_id: int, name: str, mac: str) -> None:
     """
     Best-effort MAC backfill for the worker registry so IP recovery can use it.
@@ -104,3 +131,30 @@ def update_registry_mac(cam_id: int, name: str, mac: str) -> None:
     except RequestException:
         # non-fatal; UI will still show MAC from DB and next start will upsert
         return
+
+
+def discover(cam: Dict) -> Dict:
+    """
+    Probe camera ONVIF metadata through the configured worker path.
+    In split-host mode the web process may not be on the camera network.
+    """
+    base = _remote()
+    if not base:
+        from app.onvif_util import probe_onvif
+
+        return probe_onvif(
+            host=cam["host"],
+            username=cam.get("username", ""),
+            password=cam.get("password", ""),
+            port=int(cam.get("onvif_port") or 80),
+        )
+
+    payload = {
+        "host": cam["host"],
+        "username": cam.get("username", ""),
+        "password": cam.get("password", ""),
+        "port": int(cam.get("onvif_port") or 80),
+    }
+    resp = requests.post(f"{base}/api/discover", json=payload, timeout=15)
+    resp.raise_for_status()
+    return resp.json()

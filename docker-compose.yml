@@ -2,12 +2,12 @@ services:
   timelapse:
     init: true
     build: .
-    container_name: timelapse-web
+    container_name: ${WEB_CONTAINER_NAME:-timelapse-web}
     restart: unless-stopped
     environment:
       - TZ=UTC
       - PYTHONUNBUFFERED=1
-      - WORKER_BASE_URL=http://worker-gateway:8082
+      - WORKER_BASE_URL=${WORKER_BASE_URL:-http://worker-gateway:8082}
       # Security / auth
       - SESSION_SECRET=${SESSION_SECRET}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
@@ -16,14 +16,14 @@ services:
       # Set to 1 when served over HTTPS (otherwise cookies won't be set over http)
       - SESSION_HTTPS_ONLY=${SESSION_HTTPS_ONLY:-0}
     ports:
-      - "8080:8080"
+      - "${WEB_PORT:-8080}:8080"
     volumes:
-      - "C:/timelapse-data:/data"
+      - "${TIMELAPSE_DATA_DIR:-C:/timelapse-data}:/data"
 
   worker:
     init: true
     build: .
-    container_name: timelapse-worker
+    container_name: ${WORKER_CONTAINER_NAME:-timelapse-worker}
     restart: unless-stopped
     environment:
       - TZ=UTC
@@ -35,14 +35,14 @@ services:
       - SESSION_HTTPS_ONLY=${SESSION_HTTPS_ONLY:-0}
     command: ["uvicorn", "app.worker_api:app", "--host", "0.0.0.0", "--port", "8081"]
     ports:
-      - "8081:8081"
+      - "${WORKER_REST_PORT:-8081}:8081"
     volumes:
-      - "C:/timelapse-data:/data"
+      - "${TIMELAPSE_DATA_DIR:-C:/timelapse-data}:/data"
 
   worker-grpc:
     init: true
     build: .
-    container_name: timelapse-worker-grpc
+    container_name: ${WORKER_GRPC_CONTAINER_NAME:-timelapse-worker-grpc}
     restart: unless-stopped
     environment:
       - TZ=UTC
@@ -54,36 +54,36 @@ services:
       - CRED_ENC_KEY=${CRED_ENC_KEY}
     command: ["python", "-m", "app.grpc_server"]
     ports:
-      - "50051:50051"
+      - "${WORKER_GRPC_PORT:-50051}:50051"
     volumes:
-      - "C:/timelapse-data:/data"
+      - "${TIMELAPSE_DATA_DIR:-C:/timelapse-data}:/data"
 
   worker-gateway:
     init: true
     build: .
-    container_name: timelapse-worker-gateway
+    container_name: ${WORKER_GATEWAY_CONTAINER_NAME:-timelapse-worker-gateway}
     restart: unless-stopped
     environment:
       - TZ=UTC
       - PYTHONUNBUFFERED=1
-      - WORKER_GRPC_ADDR=timelapse-worker-grpc:50051
-      - WORKER_REST_URL=http://timelapse-worker:8081
+      - WORKER_GRPC_ADDR=${WORKER_GRPC_ADDR:-timelapse-worker-grpc:50051}
+      - WORKER_REST_URL=${WORKER_REST_URL:-http://timelapse-worker:8081}
       - PYTHONPATH=/app:/app/app
     command: ["uvicorn", "app.gateway:app", "--host", "0.0.0.0", "--port", "8082"]
     ports:
-      - "8082:8082"
+      - "${WORKER_GATEWAY_PORT:-8082}:8082"
     depends_on:
       - worker-grpc
       - worker
     volumes:
-      - "C:/timelapse-data:/data"
+      - "${TIMELAPSE_DATA_DIR:-C:/timelapse-data}:/data"
 
   playwright:
     image: mcr.microsoft.com/playwright:v1.42.0-jammy
     working_dir: /work
-    entrypoint: ["bash","-lc","if [ -z \"$SESSION_COOKIE\" ]; then echo 'SESSION_COOKIE missing; skipping screenshots'; exit 0; fi; npm install playwright@1.42.0 >/tmp/npm-install.log && node grab.js"]
+    entrypoint: ["bash","-lc","if [ -z \"$$SESSION_COOKIE\" ]; then echo 'SESSION_COOKIE missing; skipping screenshots'; exit 0; fi; npm install playwright@1.42.0 >/tmp/npm-install.log && node grab.js"]
     environment:
-      - APP_HOST=http://timelapse-web:8080
+      - APP_HOST=${PLAYWRIGHT_APP_HOST:-http://timelapse-web:8080}
       - SESSION_COOKIE=${SESSION_COOKIE:-}
     volumes:
       - .:/work

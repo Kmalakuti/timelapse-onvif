@@ -1,0 +1,40 @@
+# Phase 4 split-host edge side: Windows runs worker services only.
+# Standalone compose file; do not combine with docker-compose.yml.
+services:
+  worker:
+    init: true
+    build: .
+    container_name: ${WORKER_CONTAINER_NAME:-timelapse-split-worker}
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+      - PYTHONUNBUFFERED=1
+      - SESSION_SECRET=${SESSION_SECRET}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+      - CRED_ENC_KEY=${CRED_ENC_KEY}
+      - SESSION_HTTPS_ONLY=${SESSION_HTTPS_ONLY:-0}
+    command: ["uvicorn", "app.worker_api:app", "--host", "0.0.0.0", "--port", "8081"]
+    ports:
+      - "${WORKER_REST_PORT:-18081}:8081"
+    volumes:
+      - "${TIMELAPSE_DATA_DIR:-C:/timelapse-data-dev}:/data"
+
+  worker-grpc:
+    init: true
+    build: .
+    container_name: ${WORKER_GRPC_CONTAINER_NAME:-timelapse-split-worker-grpc}
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app:/app/app
+      - SESSION_SECRET=${SESSION_SECRET}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+      - CRED_ENC_KEY=${CRED_ENC_KEY}
+    command: ["python", "-m", "app.grpc_server"]
+    ports:
+      - "${WORKER_GRPC_PORT:-15051}:50051"
+    volumes:
+      - "${TIMELAPSE_DATA_DIR:-C:/timelapse-data-dev}:/data"

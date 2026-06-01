@@ -25,20 +25,31 @@ from requests.auth import HTTPDigestAuth
 
 from .auth import verify_password, load_admin_credentials
 from .db import init_db, list_cameras, add_camera, get_camera, update_camera, delete_camera
-from .onvif_util import probe_onvif
 from . import worker_client as capture
 from .render import start_render_job, get_job, list_jobs, frame_range, reset_running_jobs_to_interrupted
 from app import worker_client
 from app import db
+from app.storage import StorageError, storage_from_env
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
 TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+def _template_response(request: Request, name: str, context: dict | None = None, **kwargs):
+    ctx = dict(context or {})
+    ctx.setdefault("request", request)
+    return templates.TemplateResponse(request, name, ctx, **kwargs)
+
 DATA_ROOT = os.getenv("DATA_ROOT", "/data")
 HEALTH_WARN_SECONDS = int(os.getenv("HEALTH_WARN_SECONDS", "120"))
 HEALTH_BAD_SECONDS = int(os.getenv("HEALTH_BAD_SECONDS", "600"))
+
+NO_FRAMES_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180">
+  <rect width="100%" height="100%" fill="#eee"/>
+  <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+        font-family="Arial" font-size="16" fill="#666">No frames yet</text>
+</svg>"""
 
 
 ADMIN_USER, ADMIN_HASH = load_admin_credentials()
@@ -228,7 +239,7 @@ def _startup():
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "csrf_token": _csrf_token(request)})
+    return _template_response(request, "login.html", {"csrf_token": _csrf_token(request)})
 
 @app.post("/login")
 def login_post(
@@ -241,7 +252,7 @@ def login_post(
     username = username.strip()
     if username != ADMIN_USER or not verify_password(password, ADMIN_HASH):
         # Re-render login (don't leak which field was wrong)
-        return templates.TemplateResponse("login.html", {"request": request, "csrf_token": _csrf_token(request), "error": "Invalid credentials"}, status_code=401)
+        return _template_response(request, "login.html", {"csrf_token": _csrf_token(request), "error": "Invalid credentials"}, status_code=401)
 
     # Reset session (prevents session fixation)
     request.session.clear()
@@ -264,7 +275,7 @@ def index(request: Request):
             c["running"] = capture.is_running(int(c["id"]))
         except Exception:
             c["running"] = False
-    return templates.TemplateResponse("index.html", {"request": request, "cameras": cams, "csrf_token": _csrf_token(request)})
+    return _template_response(request, "index.html", {"cameras": cams, "csrf_token": _csrf_token(request)})
 
 
 @app.get("/favicon.ico")
@@ -315,7 +326,7 @@ def live_view(request: Request):
             c["running"] = capture.is_running(int(c["id"]))
         except Exception:
             c["running"] = False
-    return templates.TemplateResponse("live.html", {"request": request, "cameras": cams})
+    return _template_response(request, "live.html", {"cameras": cams})
 
 
 @app.get("/api/camera/{cam_id}/diagnose")
@@ -329,6 +340,48 @@ def camera_diagnose(cam_id: int):
 
     # Latest saved frame info (helps troubleshooting)
     frame = _latest_frame_info(cam["name"])
+
+    if capture.is_remote():
+        edge_error = None
+        try:
+            edge = capture.latest_snapshot_meta(cam["name"])
+        except requests.RequestException as exc:
+            edge = None
+            edge_error = str(exc)
+        if edge and edge.get("modified_ts"):
+            modified_ts = float(edge["modified_ts"])
+            age_seconds = int(max(0, time.time() - modified_ts))
+            frame = {
+                "path": edge.get("file"),
+                "age_seconds": age_seconds,
+                "timestamp": datetime.fromtimestamp(modified_ts).isoformat(),
+            }
+            level = "ok" if age_seconds <= HEALTH_WARN_SECONDS else "warn"
+            summary = f"Latest edge frame age: {age_seconds}s"
+        else:
+            level = "warn"
+            summary = "No edge frames found yet"
+            if edge_error:
+                summary += f" ({edge_error})"
+        return {
+            "id": cam_id,
+            "name": cam.get("name"),
+            "host": cam.get("host"),
+            "running": bool(capture.is_running(cam_id)),
+            "snapshot_uri_set": bool(snap_uri),
+            "rtsp_uri_set": bool(rtsp_uri),
+            "snapshot_ok": None,
+            "snapshot_status": None,
+            "snapshot_latency_ms": None,
+            "snapshot_error": None,
+            "rtsp_host": None,
+            "rtsp_port": None,
+            "rtsp_port_ok": None,
+            "rtsp_port_error": None,
+            "last_frame": frame,
+            "level": level,
+            "summary": summary,
+        }
 
     # Check RTSP port reachability (cheap, useful)
     rtsp_host = cam.get("host") or ""
@@ -433,7 +486,7 @@ def camera_diagnose(cam_id: int):
 
 @app.get("/add", response_class=HTMLResponse)
 def add_page(request: Request):
-    return templates.TemplateResponse("add.html", {"request": request, "csrf_token": _csrf_token(request)})
+    return _template_response(request, "add.html", {"csrf_token": _csrf_token(request)})
 
 def _validate_camera_name(name: str) -> str:
     name = name.strip()
@@ -480,7 +533,7 @@ def camera_probe(request: Request, cam_id: int):
     if not cam:
         raise HTTPException(404, "Camera not found")
     try:
-        result = probe_onvif(cam["host"], cam["username"], cam["password"], int(cam["onvif_port"]))
+        result = worker_client.discover(cam)
     except Exception as e:
         raise HTTPException(400, f"ONVIF probe failed: {e}")
 
@@ -516,18 +569,65 @@ def camera_stop(request: Request, cam_id: int, csrf_token: str = Form(...)):
     capture.stop_camera(cam_id, reason="manual")
     return RedirectResponse("/", status_code=303)
 
+
+def _worker_latest_jpg(camera_name: str):
+    try:
+        resp = capture.latest_jpg(camera_name)
+    except requests.RequestException:
+        return None
+    if resp is None:
+        return None
+    return Response(
+        content=resp.content,
+        media_type=resp.headers.get("content-type", "image/jpeg"),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+def _storage_latest_jpg(cam_id: int, variant: str):
+    try:
+        adapter = storage_from_env()
+        item = adapter.latest_frame(
+            os.getenv("PROTOTYPE_ORG_ID", "org_dev_001"),
+            os.getenv("PROTOTYPE_SITE_ID", "site_dev_001"),
+            str(cam_id),
+            variant=variant,
+        )
+        if item is None:
+            return None
+        content = adapter.get_object(item.key)
+        if content is None:
+            return None
+        return Response(content=content, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    except (OSError, StorageError, ValueError):
+        return None
+
+
+def _configured_latest_jpg(cam: dict, variant: str):
+    source = os.getenv("LATEST_FRAME_SOURCE", "http").strip().lower()
+    if source in ("filesystem", "s3"):
+        stored = _storage_latest_jpg(int(cam["id"]), variant)
+        if stored is not None:
+            return stored
+    elif source != "http":
+        raise HTTPException(500, f"Unsupported LATEST_FRAME_SOURCE: {source}")
+
+    if source == "http" or os.getenv("LATEST_FRAME_HTTP_FALLBACK", "1").strip() == "1":
+        return _worker_latest_jpg(cam["name"])
+    return None
+
+
 @app.get("/camera/{cam_id}/latest.jpg")
 def latest_jpg(cam_id: int):
     cam = get_camera(cam_id)
     if not cam:
         raise HTTPException(404, "Camera not found")
+    remote = _configured_latest_jpg(cam, "original")
+    if remote is not None:
+        return remote
     folder = DATA_DIR / cam["name"]
 
-    svg = b"""<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180">
-      <rect width="100%" height="100%" fill="#eee"/>
-      <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
-            font-family="Arial" font-size="16" fill="#666">No frames yet</text>
-    </svg>"""
+    svg = NO_FRAMES_SVG
 
     if not folder.exists():
         return Response(content=svg, media_type="image/svg+xml", headers={"Cache-Control":"no-store"})
@@ -545,6 +645,10 @@ def thumb_jpg(cam_id: int):
     cam = get_camera(cam_id)
     if not cam:
         raise HTTPException(404, "Camera not found")
+
+    remote = _configured_latest_jpg(cam, "thumb")
+    if remote is not None:
+        return remote
 
     USE_SNAPSHOT_THUMBS = os.getenv("USE_SNAPSHOT_THUMBS", "1").strip() == "1"
 
@@ -571,6 +675,9 @@ def thumb_jpg(cam_id: int):
             latest = folder / max(names)
             return FileResponse(latest, headers={"Cache-Control":"no-store"})
 
+    if capture.is_remote():
+        return Response(content=svg, media_type="image/svg+xml", headers={"Cache-Control":"no-store"})
+
     # Fallback to snapshot URI if no local frames and snapshot allowed (even if flag off earlier)
     if snap:
         try:
@@ -586,11 +693,7 @@ def thumb_jpg(cam_id: int):
             pass
 
     # Blank placeholder
-    svg = b"""<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180">
-      <rect width="100%" height="100%" fill="#eee"/>
-      <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
-            font-family="Arial" font-size="16" fill="#666">No frames yet</text>
-    </svg>"""
+    svg = NO_FRAMES_SVG
     return Response(content=svg, media_type="image/svg+xml", headers={"Cache-Control":"no-store"})
 
 @app.get("/camera/{cam_id}/edit", response_class=HTMLResponse)
@@ -598,7 +701,7 @@ def edit_page(request: Request, cam_id: int):
     cam = get_camera(cam_id)
     if not cam:
         raise HTTPException(404, "Camera not found")
-    return templates.TemplateResponse("edit.html", {"request": request, "camera": cam, "csrf_token": _csrf_token(request)})
+    return _template_response(request, "edit.html", {"camera": cam, "csrf_token": _csrf_token(request)})
 
 @app.post("/camera/{cam_id}/edit")
 def edit_post(
@@ -644,7 +747,7 @@ def edit_post(
 @app.get("/render", response_class=HTMLResponse)
 def render_page(request: Request):
     cams = list_cameras()
-    return templates.TemplateResponse("render.html", {"request": request, "cameras": cams, "csrf_token": _csrf_token(request)})
+    return _template_response(request, "render.html", {"cameras": cams, "csrf_token": _csrf_token(request)})
 
 @app.post("/render")
 def render_post(
@@ -679,12 +782,12 @@ def render_job_page(request: Request, job_id: str):
     job = get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
-    return templates.TemplateResponse("job.html", {"request": request, "job": job, "csrf_token": _csrf_token(request)})
+    return _template_response(request, "job.html", {"job": job, "csrf_token": _csrf_token(request)})
 
 @app.get("/renders", response_class=HTMLResponse)
 def renders_page(request: Request):
     jobs = list_jobs()
-    return templates.TemplateResponse("renders.html", {"request": request, "jobs": jobs, "csrf_token": _csrf_token(request)})
+    return _template_response(request, "renders.html", {"jobs": jobs, "csrf_token": _csrf_token(request)})
 
 @app.get("/api/camera/{cam_id}/range")
 def api_camera_range(cam_id: int):

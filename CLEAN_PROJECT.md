@@ -37,15 +37,15 @@ Keep the OAI app as the known-good baseline. Any Go worker work should be introd
 
 ## Running This Copy Safely
 
-The base `docker-compose.yml` preserves the production names and ports from the live app.
+The base `docker-compose.yml` preserves the production names, ports, and `C:/timelapse-data` bind mount by default. Those host settings are now parameterized for portable deployments.
 
 To run this clean copy beside the current live stack, use the dev override:
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+docker compose --env-file .env.dev-windows -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 ```
 
-The dev override uses:
+Copy `env/windows-dev.env.example` to `.env.dev-windows`, fill in secrets, and keep `TIMELAPSE_DATA_DIR=C:/timelapse-data-dev`. The dev override uses these safe defaults:
 
 - Web: `http://localhost:18080`
 - Worker REST: `http://localhost:18081`

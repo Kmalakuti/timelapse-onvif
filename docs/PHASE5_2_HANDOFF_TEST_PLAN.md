@@ -1,0 +1,149 @@
+# Phase 5.2 Edge Uploader Sidecar Handoff And Test Plan
+
+Status: ready for implementation after Phase 5.1 completed on 2026-06-01.
+
+## Goal
+
+Add a Windows dev-edge uploader sidecar that discovers completed local JPEG captures, records durable upload state in an edge-local SQLite journal, generates configured variants, and uploads them to the S3-compatible adapter with bounded retry and backoff. Prove that capture continues while storage is unavailable and queued uploads drain without duplicates after storage returns.
+
+## Proven Starting State
+
+- Phase 5.1 evidence is recorded in `docs/PHASE5_1_VERIFICATION.md`.
+- Filesystem and S3-compatible adapters implement `put_variant`, `get_variant`, `latest_frame`, `list_range`, `delete_frame`, and `create_render_artifact`.
+- Ubuntu-local MinIO is healthy with private bucket `timelapse-dev`.
+- The dev uploader policy is bucket-scoped and permits list, read, write, and delete object operations without MinIO administrator access.
+- Windows split capture writes non-empty JPEG files under `C:/timelapse-data-dev/<camera_name>/YYYYMMDDTHHMMSSZ.jpg`.
+- SQLite remains local to owning services.
+- The interim HTTP latest-frame proxy remains the UI rollback path.
+- The parked Go implementation under `go-reference/TimeLapse` must not be read.
+
+## Required Design
+
+### Sidecar Boundary
+
+- Add a Python uploader module and run it as a separate Windows split dev container.
+- Mount only `C:/timelapse-data-dev:/data`.
+- Store the uploader journal at `/data/_state/uploader.sqlite`.
+- Do not add uploader logic to capture threads.
+- Do not read or write app-owned or worker-owned SQLite files from the uploader.
+
+### Completed-File Discovery
+
+- Scan camera frame directories only. Exclude `_state`, `_renders`, `_tmp`, and hidden/internal paths.
+- Accept only filenames matching `YYYYMMDDTHHMMSSZ.jpg`.
+- Queue only non-empty files that are stable across scans or older than a configurable completion grace period.
+- Use an idempotent frame identity based on prototype org ID, site ID, edge ID, camera identity, UTC capture timestamp, and source path.
+- Preserve local JPEG files after upload. Cleanup belongs to later policy work.
+
+### Upload Journal
+
+Minimum journal fields:
+
+| Field | Purpose |
+| --- | --- |
+| `frame_id` | Stable idempotent identity |
+| `camera_id` / `camera_name` | Edge capture source |
+| `capture_ts` | UTC timestamp parsed from filename |
+| `source_path` | Local original JPEG |
+| `source_size` / `source_sha256` | Integrity and change detection |
+| `variant` | `original`, `thumb`, or optional `preview` |
+| `status` | Pending, uploading, uploaded, or retryable error |
+| `attempts` | Retry count |
+| `next_retry_ts` | Backoff scheduling |
+| `last_error` | Bounded diagnostic text without secrets |
+| `object_key` / `uploaded_ts` | Durable upload result |
+
+Reset interrupted `uploading` rows to pending on sidecar startup.
+
+### Variants
+
+- Upload `original` and edge-generated `thumb` by default.
+- Make `preview` configurable.
+- Use configurable thumbnail and preview maximum dimensions and JPEG quality.
+- Benchmark generation time and resource impact on the Windows dev edge.
+- Keep cloud-side downsampling available as a later fallback if edge generation materially affects capture reliability or Pi-class headroom.
+
+### Retry And Concurrency
+
+- Use bounded upload concurrency.
+- Use exponential backoff with configurable minimum and maximum delays.
+- Reuse object keys deterministically so retries are idempotent.
+- Record checksums and avoid duplicate logical journal rows.
+- Bound logs and never print credentials.
+
+### Trusted-LAN MinIO Access
+
+The Windows dev edge cannot upload to MinIO while the API is bound only to Ubuntu localhost.
+
+- Bind only the MinIO S3 API to the Ubuntu trusted-LAN address when running the split uploader test.
+- Keep the MinIO console bound to `127.0.0.1`.
+- Do not expose MinIO publicly.
+- Do not change Windows Firewall rules.
+- Keep credentials in ignored local env files and tracked templates blank.
+
+## Explicitly Out Of Scope
+
+- Do not begin Phase 5.3 metadata ingest, timeline reads, or UI migration to uploaded metadata.
+- Do not remove the interim HTTP latest-frame fallback.
+- Do not move renderer reads to object storage.
+- Do not add retention deletion, quota enforcement, or local file cleanup.
+- Do not merge worker containers into the final edge daemon.
+- Do not modify production ports, production containers, production Windows Firewall rules, or `C:/timelapse-data`.
+- Do not place SQLite on SMB, NFS, MinIO, or any shared/network filesystem.
+- Do not expose MinIO publicly.
+
+## Implementation Verification
+
+Run focused unit tests for:
+
+| Scenario | Expected result |
+| --- | --- |
+| Completed-file filter | Only stable, non-empty, timestamped JPEGs are queued. |
+| Journal idempotency | Repeated scans create one logical frame/variant row. |
+| Restart recovery | Interrupted `uploading` rows return to pending. |
+| Variant generation | Thumb is generated by default; preview follows configuration. |
+| Deterministic keys | Retries reuse the documented S3-compatible frame key. |
+| Retry scheduling | Failures increment attempts and schedule bounded exponential backoff. |
+| Secret handling | Credentials do not appear in journal errors or logs. |
+
+Run isolated integration checks against Ubuntu MinIO:
+
+| Scenario | Expected result |
+| --- | --- |
+| Storage available | Original and thumb upload once with matching checksums. |
+| Storage unavailable | Capture continues and journal pending count grows. |
+| Storage restored | Pending rows drain without duplicate logical objects. |
+| Sidecar restart | Pending rows survive restart and resume upload. |
+| Local preservation | Uploaded local JPEG files remain present. |
+| Production isolation | Production ports, containers, firewall rules, and `C:/timelapse-data` remain untouched. |
+
+Run:
+
+```bash
+python3 -m compileall app
+git diff --check
+sg docker -c "scripts/bootstrap-minio-dev.sh"
+sg docker -c "scripts/verify-minio-dev-roundtrip.sh"
+sg docker -c "scripts/verify-storage-adapters-minio-dev.sh"
+```
+
+Run `sg docker -c "scripts/run-split-playwright.sh"` after any UI-visible or latest-frame routing change. Phase 5.2 should not require such a change, but the regression remains mandatory if one is introduced.
+
+## Done Criteria
+
+Phase 5.2 is complete only when:
+
+1. The Windows split dev stack runs a separate uploader sidecar with edge-local SQLite journal state.
+2. Stable completed JPEGs upload original and thumb variants through the S3-compatible adapter.
+3. Preview generation is configurable and edge variant-generation cost is recorded.
+4. Upload failures are durable, bounded, retried with backoff, and do not block capture.
+5. A deliberate storage outage proves pending accumulation and duplicate-free drain after reconnect.
+6. Uploaded local JPEGs remain untouched.
+7. Production remains untouched.
+8. Verification evidence is recorded in `docs/PHASE5_2_VERIFICATION.md` before Phase 5.3 begins.
+
+## Next Session Prompt
+
+```text
+Read docs/MIGRATION_HANDOFF.md, docs/TARGET_ARCHITECTURE.md, docs/PHASE5_STORAGE_PLAN.md, docs/PHASE5_1_VERIFICATION.md, and docs/PHASE5_2_HANDOFF_TEST_PLAN.md. Implement Phase 5.2 edge uploader-sidecar work only, following docs/PHASE5_2_HANDOFF_TEST_PLAN.md. Keep production ports, Windows Firewall rules, production containers, and C:/timelapse-data untouched. Keep SQLite local to owning services. Preserve local JPEGs and the interim HTTP latest-frame fallback. Do not begin Phase 5.3 metadata ingest, UI migration, renderer migration, retention, or edge-daemon consolidation. Keep MinIO private: expose only its S3 API to the trusted LAN if needed for the Windows dev uploader, and keep its console localhost-only. Run focused uploader tests and outage/reconnect verification, document results in docs/PHASE5_2_VERIFICATION.md, and do not read the parked Go reference implementation.
+```
