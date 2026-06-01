@@ -224,13 +224,4 @@ Done when the dev edge continues capture through WAN loss and drains its queue a
 
 ## Next Coding Session Boundary
 
-Phase 5.1 is complete. Implement Phase 5.2 only unless the user explicitly expands scope. Use `docs/PHASE5_2_HANDOFF_TEST_PLAN.md` as the detailed implementation and verification checklist.
-
-1. Add a separate Windows split dev uploader sidecar with an edge-local SQLite journal.
-2. Scan stable completed JPEGs, generate original and thumb variants by default, and make preview configurable.
-3. Upload with deterministic keys, checksums, bounded concurrency, retry, and backoff.
-4. Preserve local JPEG files and the interim HTTP latest-frame fallback.
-5. Prove capture continuity, pending accumulation, and duplicate-free drain through a deliberate MinIO outage.
-6. Do not begin Phase 5.3 metadata ingest, UI migration, renderer migration, retention, or edge-daemon consolidation.
-7. Keep production ports, Windows Firewall rules, production containers, and `C:/timelapse-data` untouched.
-8. Document Phase 5.2 verification before beginning Phase 5.3.
+Phase 5.1 through Phase 5.4 are complete. Use `docs/PHASE5_5_HANDOFF_TEST_PLAN.md` for the next boundary. Do not implement retention deletion or run deletion tests until destructive Phase 5.5 behavior receives new explicit authorization. Preserve Windows local JPEGs and keep local spool cleanup out of scope.

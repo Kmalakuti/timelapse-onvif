@@ -2,9 +2,9 @@
 
 Use this file as the context-reset starting point for the active Python/FastAPI migration. The goal is Ubuntu-driven development with a Windows camera-facing edge worker.
 
-## Current Checkpoint: Phase 5.1 Storage Adapter Complete
+## Current Checkpoint: Phase 5.4 Cloud-Only Renderer Reads Complete
 
-Phase 1 through Phase 4 are proven. Phase 5.0 completed on 2026-06-01: isolated Ubuntu-local MinIO, bucket bootstrap, prototype IDs, and S3-compatible upload/download verification. Phase 5.1 completed on 2026-06-01: filesystem and S3-compatible adapters, stable object keys, explicit HTTP latest-frame fallback, focused adapter tests, and split UI regression verification. The next implementation boundary is Phase 5.2 uploader-sidecar work; do not begin it without an explicit request.
+Phase 1 through Phase 4 are proven. Phase 5.0 completed on 2026-06-01: isolated Ubuntu-local MinIO, bucket bootstrap, prototype IDs, and S3-compatible upload/download verification. Phase 5.1 completed on 2026-06-01: filesystem and S3-compatible adapters, stable object keys, explicit HTTP latest-frame fallback, focused adapter tests, and split UI regression verification. Phase 5.2 completed on 2026-06-01: separate Windows dev uploader sidecar, edge-local SQLite journal, deterministic original and thumbnail uploads, configurable preview generation, bounded retry and backoff, trusted-LAN MinIO S3 API bind, and outage/restart/reconnect verification. Phase 5.3 completed on 2026-06-01: core-owned stable camera mapping, token-authenticated metadata ingest, edge-local publication retry/backfill, indexed object-backed latest-frame and timeline reads, and HTTP fallback preservation. Phase 5.4 completed on 2026-06-01: indexed cloud-only renderer reads, MinIO render-artifact writes, stored-artifact downloads, and Windows dev-edge-offline render verification. Stop before Phase 5.5 retention unless deletion behavior receives new explicit authorization.
 
 Windows edge target:
 
@@ -53,7 +53,7 @@ Verified on 2026-05-30:
 
 Read-only checks on 2026-06-01 confirmed that production containers are running and respond from Windows localhost, but Ubuntu connections to production ports `8080`, `8081`, `8082`, and `50051` time out. Ubuntu can reach the Windows dev worker ports required by the split stack: REST `18081` and gRPC `15051`. Enabled inbound Windows Firewall rules were found for those two dev worker ports.
 
-Do not change production containers or Windows Firewall rules during Phase 5.2 uploader-sidecar work. The Windows dev uploader may require the Ubuntu MinIO S3 API on a trusted-LAN bind, but production reachability is not an uploader blocker.
+Phase 5.2 did not change production containers or Windows Firewall rules. The Windows dev uploader uses the Ubuntu MinIO S3 API on a trusted-LAN bind; production reachability is not an uploader dependency.
 
 ## Phase 4 Preflight Completed
 
@@ -89,18 +89,9 @@ Started on 2026-05-31. Automated read-only checks are complete:
 
 ## Next Session Workflow
 
-Implement Phase 5.2 only. Read `docs/PHASE5_2_HANDOFF_TEST_PLAN.md` first and use its scope, exclusions, test matrix, and done criteria.
+Phase 5.3 and Phase 5.4 are complete. Use `docs/PHASE5_3_VERIFICATION.md` and `docs/PHASE5_4_VERIFICATION.md` as evidence. Stop before Phase 5.5 retention and request explicit authorization before adding or testing deletion behavior.
 
-1. Add a separate Windows split dev uploader sidecar.
-2. Scan only stable completed JPEGs under `C:/timelapse-data-dev`; preserve local files after upload.
-3. Keep the uploader SQLite journal local to the Windows dev edge owning service.
-4. Upload original and thumb variants by default, with configurable preview generation.
-5. Add bounded concurrency, durable retry, exponential backoff, checksums, and idempotent object keys.
-6. Prove pending accumulation while MinIO is unavailable and duplicate-free drain after reconnect.
-7. Preserve the interim HTTP latest-frame fallback.
-8. Do not begin Phase 5.3 metadata ingest, UI migration, renderer migration, retention, or edge-daemon consolidation.
-9. Keep production ports, Windows Firewall rules, production containers, and `C:/timelapse-data` untouched.
-10. Document Phase 5.2 verification before beginning Phase 5.3.
+Do not combine Phase 5.6 VPS rehearsal with the retention pass.
 
 ## Wi-Fi Stability Observation
 
@@ -129,13 +120,18 @@ The dev worker ports are acceptable for early trusted-LAN testing only. They can
 - `docs/PHASE5_1_HANDOFF_TEST_PLAN.md`: Phase 5.1 implementation boundary, exclusions, and test matrix.
 - `docs/PHASE5_1_VERIFICATION.md`: completed Phase 5.1 adapter verification evidence.
 - `docs/PHASE5_2_HANDOFF_TEST_PLAN.md`: Phase 5.2 uploader-sidecar implementation boundary and verification checklist.
+- `docs/PHASE5_2_VERIFICATION.md`: completed uploader-sidecar, outage, restart, reconnect, and isolation evidence.
+- `docs/PHASE5_3_5_HANDOFF_TEST_PLAN.md`: completed execution plan for metadata ingest, object-backed reads, renderer migration, and the retention authorization boundary.
+- `docs/PHASE5_3_VERIFICATION.md`: completed metadata-ingest, mapping, backfill, indexed-read, and outage verification evidence.
+- `docs/PHASE5_4_VERIFICATION.md`: completed cloud-only renderer, artifact-write, and edge-offline verification evidence.
+- `docs/PHASE5_5_HANDOFF_TEST_PLAN.md`: next-session retention planning, authorization boundary, decision inputs, and isolated destructive-test gate.
 - `docker-compose.minio-dev.yml`: isolated Ubuntu-local MinIO topology.
 - `env/minio-dev.env.example`: blank local MinIO credential template.
 - `docs/Phase 5 blockers Questions.md`: fetched product decisions that resolved Phase 5 blockers.
 - `docker-compose.split-ubuntu.yml`: Ubuntu app-side split topology.
-- `docker-compose.split-windows-worker.yml`: Windows worker-only topology for later deployment.
+- `docker-compose.split-windows-worker.yml`: Windows worker and uploader-sidecar split topology.
 - `env/ubuntu-split.env.example`: Ubuntu split env template.
-- `env/windows-split-worker.env.example`: Windows worker-only env template.
+- `env/windows-split-worker.env.example`: Windows worker and uploader-sidecar split env template.
 - `worker.proto`: stable worker contract.
 
 ## Parked Go Reference
@@ -144,6 +140,4 @@ The Go implementation under `go-reference/TimeLapse` is parked reference materia
 
 ## Next Prompt
 
-```text
-Read docs/MIGRATION_HANDOFF.md, docs/TARGET_ARCHITECTURE.md, docs/PHASE5_STORAGE_PLAN.md, docs/PHASE5_1_VERIFICATION.md, and docs/PHASE5_2_HANDOFF_TEST_PLAN.md. Implement Phase 5.2 edge uploader-sidecar work only, following docs/PHASE5_2_HANDOFF_TEST_PLAN.md. Keep production ports, Windows Firewall rules, production containers, and C:/timelapse-data untouched. Keep SQLite local to owning services. Preserve local JPEGs and the interim HTTP latest-frame fallback. Do not begin Phase 5.3 metadata ingest, UI migration, renderer migration, retention, or edge-daemon consolidation. Keep MinIO private: expose only its S3 API to the trusted LAN if needed for the Windows dev uploader, and keep its console localhost-only. Run focused uploader tests and outage/reconnect verification, document results in docs/PHASE5_2_VERIFICATION.md, and do not read the parked Go reference implementation.
-```
+See `docs/PHASE5_5_HANDOFF_TEST_PLAN.md` for the copy-ready next-context prompt, decision inputs, and destructive-test authorization boundary.

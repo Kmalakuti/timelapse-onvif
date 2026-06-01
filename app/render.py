@@ -10,7 +10,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
-from app import db
+from app import db, metadata
+from app.storage import storage_from_env
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
 RENDER_DIR = DATA_DIR / "_renders"
@@ -50,6 +51,7 @@ def _hydrate_job(data: Dict[str, Any]) -> Dict[str, Any]:
     job.setdefault("end_ts", "")
     job.setdefault("status", "unknown")
     job.setdefault("output_path", None)
+    job.setdefault("artifact_key", None)
     job.setdefault("error", None)
     return job
 
@@ -106,6 +108,23 @@ def select_frames(camera_name: str, start_ts: str, end_ts: str) -> List[Path]:
         end_ts = frames[-1].stem
 
     return [p for p in frames if start_ts <= p.stem <= end_ts]
+
+
+
+def select_storage_frames(app_camera_id: int, start_ts: str, end_ts: str, workspace: Path, adapter=None) -> List[Path]:
+    adapter = adapter or storage_from_env()
+    rows = metadata.list_range(app_camera_id, _norm_ts(start_ts), _norm_ts(end_ts), variant="original")
+    workspace.mkdir(parents=True, exist_ok=True)
+    frames: List[Path] = []
+    for row in rows:
+        key = row["variants"]["original"]["object_key"]
+        data = adapter.get_object(key)
+        if data is None:
+            raise RuntimeError(f"Uploaded original is missing: {key}")
+        path = workspace / f"{row['capture_ts']}.jpg"
+        path.write_bytes(data)
+        frames.append(path)
+    return frames
 
 
 def filter_bad_frames_by_size(frames: List[Path], min_ratio: float = 0.60) -> List[Path]:
@@ -211,6 +230,7 @@ def build_vf_name_only(camera_name: str, overlay_name: bool) -> str:
 def _run_render(
     job_id: str,
     camera_name: str,
+    app_camera_id: Optional[int],
     start_ts: str,
     end_ts: str,
     fps: int,
@@ -220,6 +240,8 @@ def _run_render(
 ) -> None:
     list_path = None
     stamped_dir = None
+    workspace = None
+    adapter = None
     started_at = datetime.now(timezone.utc).isoformat()
 
     with LOCK:
@@ -235,7 +257,15 @@ def _run_render(
         RENDER_DIR.mkdir(parents=True, exist_ok=True)
         TMP_DIR.mkdir(parents=True, exist_ok=True)
 
-        frames = select_frames(camera_name, start_ts, end_ts)
+        storage_render = os.getenv("RENDER_SOURCE", "filesystem").strip().lower() == "storage"
+        if storage_render:
+            if app_camera_id is None:
+                raise RuntimeError("Storage render requires an app camera ID")
+            workspace = TMP_DIR / f"{job_id}_objects"
+            adapter = storage_from_env()
+            frames = select_storage_frames(app_camera_id, start_ts, end_ts, workspace, adapter=adapter)
+        else:
+            frames = select_frames(camera_name, start_ts, end_ts)
         if not frames:
             raise RuntimeError("No frames found in selected range")
 
@@ -270,7 +300,7 @@ def _run_render(
         else:
             vf = build_vf_name_only(camera_name, overlay_name=overlay_name)
 
-        out_folder = RENDER_DIR / camera_name
+        out_folder = (workspace if storage_render else RENDER_DIR / camera_name)
         out_folder.mkdir(parents=True, exist_ok=True)
         out_path = out_folder / f"render_{eff_start}_{eff_end}_{fps}fps.mp4"
 
@@ -300,10 +330,21 @@ def _run_render(
         if p.returncode != 0:
             raise RuntimeError((p.stderr or p.stdout or "ffmpeg failed").strip())
 
+        artifact_key = None
+        if storage_render:
+            artifact = adapter.create_render_artifact(
+                os.getenv("PROTOTYPE_ORG_ID", "org_dev_001"),
+                os.getenv("PROTOTYPE_SITE_ID", "site_dev_001"),
+                job_id,
+                "timelapse.mp4",
+                out_path.read_bytes(),
+            )
+            artifact_key = artifact.key
         finished_at = datetime.now(timezone.utc).isoformat()
         with LOCK:
             JOBS[job_id]["status"] = "done"
-            JOBS[job_id]["output_path"] = str(out_path)
+            JOBS[job_id]["output_path"] = None if storage_render else str(out_path)
+            JOBS[job_id]["artifact_key"] = artifact_key
             JOBS[job_id]["finished_at"] = finished_at
 
         try:
@@ -311,7 +352,8 @@ def _run_render(
                 job_id,
                 {
                     "status": "done",
-                    "output_path": str(out_path),
+                    "output_path": None if storage_render else str(out_path),
+                    "artifact_key": artifact_key,
                     "finished_at": finished_at,
                     "frame_count": len(frames),
                 },
@@ -348,6 +390,11 @@ def _run_render(
                 shutil.rmtree(stamped_dir, ignore_errors=True)
         except Exception:
             pass
+        try:
+            if workspace and Path(workspace).exists():
+                shutil.rmtree(workspace, ignore_errors=True)
+        except Exception:
+            pass
 
 
 def start_render_job(
@@ -358,6 +405,7 @@ def start_render_job(
     filter_bad: bool,
     overlay_name: bool,
     overlay_timestamp: bool,
+    app_camera_id: Optional[int] = None,
 ) -> str:
     job_id = uuid.uuid4().hex
     norm_start = _norm_ts(start_ts)
@@ -409,7 +457,7 @@ def start_render_job(
 
     t = threading.Thread(
         target=_run_render,
-        args=(job_id, camera_name, start_ts, end_ts, int(fps),
+        args=(job_id, camera_name, app_camera_id, start_ts, end_ts, int(fps),
               bool(filter_bad), bool(overlay_name), bool(overlay_timestamp)),
         daemon=True,
     )

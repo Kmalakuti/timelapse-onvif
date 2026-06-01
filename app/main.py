@@ -28,7 +28,7 @@ from .db import init_db, list_cameras, add_camera, get_camera, update_camera, de
 from . import worker_client as capture
 from .render import start_render_job, get_job, list_jobs, frame_range, reset_running_jobs_to_interrupted
 from app import worker_client
-from app import db
+from app import db, metadata
 from app.storage import StorageError, storage_from_env
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
@@ -171,7 +171,7 @@ def _check_csrf(request: Request, provided: Optional[str]) -> None:
 def _is_authed(request: Request) -> bool:
     return bool(request.session.get("user") == ADMIN_USER)
 
-PUBLIC_PATHS = {"/login"}
+PUBLIC_PATHS = {"/login", "/api/storage/frames"}
 
 @app.middleware("http")
 async def auth_and_security_headers(request: Request, call_next):
@@ -218,6 +218,8 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup():
     init_db()
+    metadata.init_db()
+    metadata.sync_camera_mappings()
     reset_running_jobs_to_interrupted()
     # Auto-resume cameras that were running before restart; skip ones stopped manually.
     for cam in list_cameras():
@@ -587,15 +589,10 @@ def _worker_latest_jpg(camera_name: str):
 def _storage_latest_jpg(cam_id: int, variant: str):
     try:
         adapter = storage_from_env()
-        item = adapter.latest_frame(
-            os.getenv("PROTOTYPE_ORG_ID", "org_dev_001"),
-            os.getenv("PROTOTYPE_SITE_ID", "site_dev_001"),
-            str(cam_id),
-            variant=variant,
-        )
+        item = metadata.latest_frame(cam_id, variant=variant)
         if item is None:
             return None
-        content = adapter.get_object(item.key)
+        content = adapter.get_object(item["variants"][variant]["object_key"])
         if content is None:
             return None
         return Response(content=content, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
@@ -616,6 +613,20 @@ def _configured_latest_jpg(cam: dict, variant: str):
         return _worker_latest_jpg(cam["name"])
     return None
 
+
+
+@app.post("/api/storage/frames")
+async def ingest_storage_frame(request: Request):
+    expected = os.getenv("METADATA_INGEST_TOKEN", "").strip()
+    supplied = request.headers.get("x-ingest-token", "").strip()
+    if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+        raise HTTPException(401, "Invalid ingest token")
+    try:
+        payload = await request.json()
+        metadata.ingest_frame(payload)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"ok": True, "frame_id": payload["frame_id"]}
 
 @app.get("/camera/{cam_id}/latest.jpg")
 def latest_jpg(cam_id: int):
@@ -774,6 +785,7 @@ def render_post(
         filter_bad=(filter_bad is not None),
         overlay_name=(overlay_name is not None),
         overlay_timestamp=(overlay_timestamp is not None),
+        app_camera_id=int(camera_id),
     )
     return RedirectResponse(url=f"/render/{job_id}", status_code=303)
 
@@ -794,8 +806,22 @@ def api_camera_range(cam_id: int):
     cam = get_camera(cam_id)
     if not cam:
         raise HTTPException(404, "Camera not found")
+    if os.getenv("TIMELINE_SOURCE", "metadata").strip().lower() == "metadata":
+        rows = metadata.list_range(cam_id, variant="original")
+        start = rows[0]["capture_ts"] if rows else None
+        end = rows[-1]["capture_ts"] if rows else None
+        return {"camera": cam["name"], "start": start, "end": end, "count": len(rows), "source": "metadata"}
     start, end, count = frame_range(cam["name"])
-    return {"camera": cam["name"], "start": start, "end": end, "count": count}
+    return {"camera": cam["name"], "start": start, "end": end, "count": count, "source": "filesystem"}
+
+@app.get("/api/camera/{cam_id}/timeline")
+def api_camera_timeline(cam_id: int, start_ts: str = "", end_ts: str = "", variant: str = "thumb"):
+    cam = get_camera(cam_id)
+    if not cam:
+        raise HTTPException(404, "Camera not found")
+    if variant not in ("original", "thumb", "preview"):
+        raise HTTPException(400, "Unsupported frame variant")
+    return {"camera": cam["name"], "variant": variant, "frames": metadata.list_range(cam_id, start_ts, end_ts, variant)}
 
 @app.get("/api/render/{job_id}")
 def api_job(job_id: str):
@@ -809,8 +835,18 @@ def api_download(job_id: str):
     job = get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
-    if job["status"] != "done" or not job.get("output_path"):
+    if job["status"] != "done":
         raise HTTPException(400, "Render not complete")
+    if job.get("artifact_key"):
+        try:
+            content = storage_from_env().get_object(job["artifact_key"])
+        except StorageError as exc:
+            raise HTTPException(502, f"Stored render unavailable: {exc}") from exc
+        if content is None:
+            raise HTTPException(404, "Stored render artifact missing")
+        return Response(content=content, media_type="video/mp4", headers={"Cache-Control": "no-store", "Content-Disposition": f'attachment; filename="{job["job_id"]}.mp4"'})
+    if not job.get("output_path"):
+        raise HTTPException(404, "Output file missing")
     path = Path(job["output_path"])
     if not path.exists():
         raise HTTPException(404, "Output file missing")

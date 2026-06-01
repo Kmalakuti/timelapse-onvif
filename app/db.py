@@ -70,6 +70,7 @@ def init_db():
             request_json TEXT,
             status TEXT NOT NULL,
             output_path TEXT,
+            artifact_key TEXT,
             error TEXT,
             created_at TEXT,
             started_at TEXT,
@@ -83,6 +84,9 @@ def init_db():
             overlay_timestamp INTEGER
         )
         """)
+        render_cols = {r[1] for r in con.execute("PRAGMA table_info(render_jobs)").fetchall()}
+        if "artifact_key" not in render_cols:
+            con.execute("ALTER TABLE render_jobs ADD COLUMN artifact_key TEXT")
         con.commit()
 
     # Best-effort migration: encrypt any legacy plaintext camera creds

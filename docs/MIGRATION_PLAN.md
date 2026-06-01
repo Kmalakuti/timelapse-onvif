@@ -159,7 +159,7 @@ Implemented split-host details:
 
 ## Phase 5: Storage Test
 
-Status: Phase 5.0 and Phase 5.1 complete; Phase 5.2 uploader-sidecar work is the next implementation boundary. See `docs/TARGET_ARCHITECTURE.md`,
+Status: Phase 5.0 through Phase 5.4 complete; Phase 5.5 retention planning is the next boundary and requires explicit authorization before destructive work. See `docs/TARGET_ARCHITECTURE.md`,
 `docs/PHASE5_STORAGE_PLAN.md`, and `docs/Phase 5 blockers Questions.md`. The interim
 HTTP latest-frame bridge is proven for
 dashboard and live-view display, but it is not the durable storage architecture.
@@ -242,8 +242,8 @@ Done:
 
 Next:
 
-- Implement the Phase 5.2 Windows dev edge uploader sidecar using `docs/PHASE5_2_HANDOFF_TEST_PLAN.md`.
-- Validate restart-resume behavior in split mode.
+- Use `docs/PHASE5_5_HANDOFF_TEST_PLAN.md` for Phase 5.5 retention decisions, planning scope, and the isolated destructive-test gate.
+- Stop before retention deletion implementation or deletion tests unless destructive behavior is explicitly authorized.
 
 ## Done Criteria
 

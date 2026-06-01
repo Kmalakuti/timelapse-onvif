@@ -1,4 +1,4 @@
-# Phase 4 split-host edge side: Windows runs worker services only.
+# Phase 5.2 split-host edge side: Windows runs worker services and uploader sidecar only.
 # Standalone compose file; do not combine with docker-compose.yml.
 services:
   worker:
@@ -36,5 +36,43 @@ services:
     command: ["python", "-m", "app.grpc_server"]
     ports:
       - "${WORKER_GRPC_PORT:-15051}:50051"
+    volumes:
+      - "${TIMELAPSE_DATA_DIR:-C:/timelapse-data-dev}:/data"
+
+  uploader:
+    image: timelapse-uploader-dev:latest
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.uploader
+    container_name: ${UPLOADER_CONTAINER_NAME:-timelapse-split-uploader}
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+      - PYTHONUNBUFFERED=1
+      - STORAGE_S3_ENDPOINT_URL=${STORAGE_S3_ENDPOINT_URL}
+      - STORAGE_S3_BUCKET=${STORAGE_S3_BUCKET:-timelapse-dev}
+      - STORAGE_S3_ACCESS_KEY=${STORAGE_S3_ACCESS_KEY}
+      - STORAGE_S3_SECRET_KEY=${STORAGE_S3_SECRET_KEY}
+      - STORAGE_S3_REGION=${STORAGE_S3_REGION:-us-east-1}
+      - STORAGE_S3_TIMEOUT_SECONDS=${STORAGE_S3_TIMEOUT_SECONDS:-3}
+      - UPLOADER_ORG_ID=${UPLOADER_ORG_ID:-org_dev_001}
+      - UPLOADER_SITE_ID=${UPLOADER_SITE_ID:-site_dev_001}
+      - UPLOADER_EDGE_ID=${UPLOADER_EDGE_ID:-edge_dev_windows_001}
+      - UPLOADER_CAMERA_IDS_JSON=${UPLOADER_CAMERA_IDS_JSON:-{}}
+      - UPLOADER_COMPLETION_GRACE_SECONDS=${UPLOADER_COMPLETION_GRACE_SECONDS:-5}
+      - UPLOADER_SCAN_INTERVAL_SECONDS=${UPLOADER_SCAN_INTERVAL_SECONDS:-5}
+      - UPLOADER_CONCURRENCY=${UPLOADER_CONCURRENCY:-2}
+      - UPLOADER_RETRY_MIN_SECONDS=${UPLOADER_RETRY_MIN_SECONDS:-2}
+      - UPLOADER_RETRY_MAX_SECONDS=${UPLOADER_RETRY_MAX_SECONDS:-300}
+      - UPLOADER_THUMB_MAX_DIMENSION=${UPLOADER_THUMB_MAX_DIMENSION:-480}
+      - UPLOADER_THUMB_QUALITY=${UPLOADER_THUMB_QUALITY:-80}
+      - UPLOADER_PREVIEW_ENABLED=${UPLOADER_PREVIEW_ENABLED:-0}
+      - UPLOADER_PREVIEW_MAX_DIMENSION=${UPLOADER_PREVIEW_MAX_DIMENSION:-1280}
+      - UPLOADER_PREVIEW_QUALITY=${UPLOADER_PREVIEW_QUALITY:-85}
+      - UPLOADER_BANDWIDTH_BYTES_PER_SECOND=${UPLOADER_BANDWIDTH_BYTES_PER_SECOND:-0}
+      - UPLOADER_METADATA_INGEST_URL=${UPLOADER_METADATA_INGEST_URL:-}
+      - UPLOADER_METADATA_INGEST_TOKEN=${UPLOADER_METADATA_INGEST_TOKEN:-}
+    command: ["python", "-m", "app.uploader"]
     volumes:
       - "${TIMELAPSE_DATA_DIR:-C:/timelapse-data-dev}:/data"

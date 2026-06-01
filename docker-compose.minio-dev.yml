@@ -10,7 +10,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
-      - "127.0.0.1:${MINIO_API_PORT:-19000}:9000"
+      - "${MINIO_API_BIND_ADDRESS:-127.0.0.1}:${MINIO_API_PORT:-19000}:9000"
       - "127.0.0.1:${MINIO_CONSOLE_PORT:-19001}:9001"
     volumes:
       - "${MINIO_DATA_DIR:-./.minio-data-dev}:/data"

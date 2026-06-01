@@ -1,0 +1,12 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+COPY requirements-uploader.txt .
+RUN pip install --no-cache-dir -r requirements-uploader.txt
+
+COPY app/__init__.py ./app/__init__.py
+COPY app/storage.py ./app/storage.py
+COPY app/uploader.py ./app/uploader.py
+COPY tests/test_uploader.py ./app/tests/test_uploader.py
+
+CMD ["python", "-m", "app.uploader"]
