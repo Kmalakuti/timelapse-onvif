@@ -1,6 +1,6 @@
 # Phase 5.5 Retention Foundation Handoff And Test Plan
 
-Status: planning handoff only. Phase 5.5 implementation and every deletion test require new explicit user authorization after the decision inputs below are confirmed.
+Status: non-destructive Phase 5.5 implementation authorized on 2026-06-02. Deletion implementation, object-deletion execution, and every deletion test remain separately blocked pending new explicit authorization.
 
 ## Goal
 
@@ -32,31 +32,34 @@ Phase 5.4 evidence proves:
 
 Do not implement deletion, run object-deletion tests, remove metadata rows, add local spool cleanup, or configure MinIO lifecycle deletion until the user explicitly authorizes Phase 5.5 destructive work.
 
-Planning, schema design, dry-run evaluation code, and non-destructive tests may begin only if the next-session prompt explicitly authorizes that limited scope. A separate explicit authorization is still required before the first deletion test.
+The user authorized schema design, lifecycle and audit state, deterministic candidate evaluation, dry-run behavior, and non-destructive focused tests on 2026-06-02. A separate explicit authorization is still required before implementing deletion execution or running the first deletion test.
 
-## Required Product Decisions
+## Confirmed Product Decisions
 
-Confirm these before implementation:
+Confirmed by the user on 2026-06-02:
 
-1. Cloud retention default duration. Architecture draft: `30 days`.
-2. Cloud quota default and whether quota enforcement is enabled in the first Phase 5.5 slice. Architecture draft: `2 TB` when enabled.
-3. Variant policy: retain and evict `original`, `thumb`, and optional `preview` together per logical frame, or allow independent variant retention periods.
-4. Render artifact policy: keep renders outside frame retention initially, or add a separate render-artifact retention duration.
-5. Protected-frame scope: support an explicit `protected` flag now, or reserve the column and defer user workflows.
-6. Override scope for the first slice: organization default only, or include site and camera overrides immediately.
-7. Deletion authorization shape: authorize deletion only in a new tiny isolated bucket first, then require another approval before any dev-bucket deletion.
-8. Audit retention: choose how long retention audit rows should remain available.
+1. Cloud retention default duration: `30 days`.
+2. Cloud quota default: `2 TB`. Model quota evaluation now, but keep enforcement disabled until isolated tests prove behavior.
+3. Phase 5.5 snapshot variant policy: evict `original`, `thumb`, and optional `preview` together per logical timelapse frame.
+4. Future VMS direction: support per-camera and per-resolution retention policies. When no time-bound policy controls the result, permit storage-pressure tiering that ages out highest resolution first and retains lower-resolution representations longer.
+5. Render artifact policy: keep renders outside frame retention initially. Model a separate render-artifact retention policy later.
+6. Protected-frame scope: add the explicit protected state now; defer end-user workflows.
+7. Override scope: model organization defaults plus site and camera override records now; defer UI workflows.
+8. Deletion authorization shape: first destructive test must use a new tiny isolated bucket, then request another approval before any `timelapse-dev` deletion.
+9. Audit retention: retain retention audit rows indefinitely for the prototype.
+10. RBAC compatibility: keep the model compatible with future conditional grants such as camera scope, maximum accessible resolution, and maximum history window, for example a user restricted to low-resolution views or the most recent `24 hours`. RBAC implementation remains out of scope for Phase 5.5.
 
-## Required Design After Authorization
+## Authorized Non-Destructive Design
 
 ### Core-Owned Policy And State
 
 - Store retention policy in Ubuntu core-owned SQLite for the prototype.
 - Keep SQLite local to its owning Ubuntu app service.
-- Represent organization defaults and the authorized override scopes.
-- Store configurable retention days and optional quota bytes.
-- Add lifecycle state needed to distinguish active, protected, pending deletion, deleted, and failed deletion records.
-- Add audit rows for dry-run decisions, deletion attempts, successes, failures, and policy changes.
+- Represent organization defaults plus site and camera override records.
+- Store configurable retention days and optional quota bytes. Default to `30 days` and `2 TB`, with quota enforcement disabled in the first slice.
+- Represent snapshot variant policy explicitly. Phase 5.5 uses together-per-logical-frame eviction while preserving a future extension point for per-camera and per-resolution retention.
+- Add lifecycle state needed to distinguish active, protected, pending deletion, deleted, and failed deletion records. Add protected state now without adding user-facing workflows.
+- Add audit rows for dry-run decisions, deletion attempts, successes, failures, and policy changes. Retain audit rows indefinitely for the prototype.
 
 ### Candidate Selection
 
@@ -66,7 +69,10 @@ Confirm these before implementation:
 - Make age and quota candidate evaluation deterministic.
 - Report storage usage and candidate reasons in dry-run output.
 
-### Deletion Ordering
+### Future Deletion Ordering
+
+Document and test state-transition planning only in the authorized non-destructive pass. Do not implement execution that deletes objects or metadata until separately authorized.
+
 
 - Mark the logical frame pending deletion in core metadata before object deletion.
 - Delete only the eligible object keys associated with that logical frame.
@@ -100,11 +106,11 @@ Required tiny-bucket sequence:
 | Scenario | Expected result |
 | --- | --- |
 | Organization default | Effective policy resolves deterministically. |
-| Authorized overrides | Site or camera override wins only when enabled by scope decision. |
+| Authorized overrides | Organization default plus site and camera override records resolve deterministically. |
 | Dry-run default | Candidate evaluation reports actions without deleting objects or metadata. |
 | Age limit | Oldest eligible over-age logical frames are selected first. |
 | Quota limit | Oldest eligible logical frames are selected until usage is within quota. |
-| Variant handling | Authorized variant policy is applied consistently. |
+| Variant handling | Phase 5.5 selects all snapshot variants together per logical frame while preserving future per-resolution extension fields. |
 | Protected frame | Protected frame is never selected or deleted. |
 | Incomplete frame | Incomplete or pending frame is never selected or deleted. |
 | Deletion ordering | Metadata enters pending state before object deletion and deleted state after success. |
@@ -122,11 +128,11 @@ Required tiny-bucket sequence:
 - Phase 5.6 VPS deployment.
 - Edge-daemon consolidation.
 - PostgreSQL migration.
-- RBAC, identity federation, mTLS enrollment, or public exposure.
+- RBAC enforcement, identity federation, mTLS enrollment, or public exposure. Preserve compatibility with future conditional grants such as maximum accessible resolution and maximum history window.
 - Changes to production ports, Windows Firewall rules, production containers, or `C:/timelapse-data`.
 
 ## Copy-Ready Next Context Prompt
 
 ```text
-Read docs/MIGRATION_HANDOFF.md, docs/TARGET_ARCHITECTURE.md, docs/PHASE5_STORAGE_PLAN.md, docs/PHASE5_2_VERIFICATION.md, docs/PHASE5_3_VERIFICATION.md, docs/PHASE5_4_VERIFICATION.md, and docs/PHASE5_5_HANDOFF_TEST_PLAN.md. Start Phase 5.5 retention planning only. Review the required product decisions in docs/PHASE5_5_HANDOFF_TEST_PLAN.md and ask me to confirm them before implementation. Do not implement deletion, run object-deletion tests, remove metadata rows, configure MinIO lifecycle cleanup, or add local spool cleanup until I explicitly authorize destructive Phase 5.5 work. If I authorize non-destructive implementation, add only core-owned policy schema, lifecycle state, audit schema, deterministic candidate evaluation, dry-run behavior, and focused non-destructive tests. Keep SQLite local to owning services. Do not read the Windows uploader SQLite journal from Ubuntu. Do not rewrite existing object keys. Keep Windows local JPEGs and the interim HTTP latest-frame fallback. Keep MinIO private: expose only its S3 API to the trusted LAN if needed and keep its console localhost-only. Keep production ports, Windows Firewall rules, production containers, and C:/timelapse-data untouched. Do not begin Phase 5.6 VPS deployment, edge-daemon consolidation, PostgreSQL migration, RBAC, or identity federation. Do not read the parked Go reference implementation under go-reference/TimeLapse.
+Read docs/MIGRATION_HANDOFF.md, docs/TARGET_ARCHITECTURE.md, docs/PHASE5_STORAGE_PLAN.md, docs/PHASE5_2_VERIFICATION.md, docs/PHASE5_3_VERIFICATION.md, docs/PHASE5_4_VERIFICATION.md, and docs/PHASE5_5_HANDOFF_TEST_PLAN.md. Implement the explicitly authorized non-destructive Phase 5.5 retention foundation only: core-owned policy schema, organization defaults plus site/camera override records, lifecycle and protected state, indefinite prototype audit rows, deterministic age and quota candidate evaluation, dry-run behavior, and focused non-destructive tests. Use defaults of 30 days and 2 TB, but keep quota enforcement disabled. For Phase 5.5 snapshots, model original/thumb/preview eviction together per logical frame while preserving extension points for future per-camera and per-resolution retention tiers. Preserve compatibility with future RBAC conditions such as maximum accessible resolution and maximum history window, but do not implement RBAC. Do not implement deletion execution, run object-deletion tests, remove metadata rows, configure MinIO lifecycle cleanup, or add local spool cleanup until I explicitly authorize destructive Phase 5.5 work. Keep SQLite local to owning services. Do not read the Windows uploader SQLite journal from Ubuntu. Do not rewrite existing object keys. Keep Windows local JPEGs and the interim HTTP latest-frame fallback. Keep MinIO private: expose only its S3 API to the trusted LAN if needed and keep its console localhost-only. Keep production ports, Windows Firewall rules, production containers, and C:/timelapse-data untouched. Do not begin Phase 5.6 VPS deployment, edge-daemon consolidation, PostgreSQL migration, RBAC enforcement, or identity federation. Run focused retention dry-run tests, existing metadata/uploader/renderer regressions as appropriate, compileall, and git diff --check. Do not read the parked Go reference implementation under go-reference/TimeLapse. Document results in docs/PHASE5_5_DRY_RUN_VERIFICATION.md and stop to request separate authorization before adding or running any deletion execution.
 ```

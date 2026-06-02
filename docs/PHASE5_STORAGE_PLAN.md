@@ -224,4 +224,4 @@ Done when the dev edge continues capture through WAN loss and drains its queue a
 
 ## Next Coding Session Boundary
 
-Phase 5.1 through Phase 5.4 are complete. Use `docs/PHASE5_5_HANDOFF_TEST_PLAN.md` for the next boundary. Do not implement retention deletion or run deletion tests until destructive Phase 5.5 behavior receives new explicit authorization. Preserve Windows local JPEGs and keep local spool cleanup out of scope.
+Phase 5.1 through Phase 5.4 are complete. Non-destructive Phase 5.5 retention foundation work is authorized: policy schema, lifecycle and protected state, audit schema, deterministic candidate evaluation, dry-run behavior, and focused non-destructive tests. Use `docs/PHASE5_5_HANDOFF_TEST_PLAN.md` for the exact boundary. Do not implement retention deletion execution or run deletion tests until destructive Phase 5.5 behavior receives new explicit authorization. Preserve Windows local JPEGs and keep local spool cleanup out of scope.

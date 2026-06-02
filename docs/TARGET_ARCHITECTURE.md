@@ -88,11 +88,12 @@ Authentication and authorization are separate concerns.
 - Provisioning: add SCIM later for enterprise user and group synchronization.
 - Sessions: use short-lived user sessions and auditable service credentials.
 
-Use scoped role grants rather than only fixed global roles:
+Use scoped role grants rather than only fixed global roles. Allow optional conditions so future policies can restrict accessible history windows and media resolution tiers without inventing separate role systems:
 
 ```text
 grant = principal + role + scope + optional conditions
 scope = organization | site | edge node | camera
+condition examples = max_history_window | max_resolution_tier | allowed_media_variants
 ```
 
 Recommended permission vocabulary:
@@ -127,7 +128,7 @@ Default customer roles should be templates composed from permissions, not hard-c
 | Live Viewer | Site or camera set | Viewer plus snapshot live permission |
 | Storage Manager | Organization or site | Manage retention and quotas without camera administration |
 
-Pricing tiers are a separate entitlement layer. A user may have permission to render, while the organization's tier limits render frequency, maximum resolution, retention quota, live-session concurrency, or feature availability.
+Pricing tiers are a separate entitlement layer. A user may have permission to render, while the organization's tier limits render frequency, maximum resolution, retention quota, live-session concurrency, or feature availability. Authorization conditions and pricing entitlements must both be enforced: for example, a user may be limited to low-resolution views or the most recent 24 hours even when the organization stores higher-resolution or older media.
 
 Vendor support roles must remain separate from customer roles. Support access should be just-in-time, time-limited, reason-coded, customer-visible where appropriate, and fully audited.
 
@@ -198,12 +199,13 @@ Support organization defaults with site and camera overrides:
 - Retention duration, default `30 days`.
 - Storage quota, default `2 TB` where enabled.
 - Local spool minimum safety window and maximum disk usage.
-- Original, preview, and thumbnail retention independently configurable.
-- Legal hold or protected export later.
+- Phase 5.5 snapshot prototype: evict original, preview, and thumbnail variants together per logical timelapse frame.
+- Future policy model: permit independent per-camera and per-resolution retention tiers so storage pressure can age out highest-resolution media first and preserve lower-resolution representations longer when a time-bound policy does not determine the result.
+- Legal hold, protected frame, or protected export state.
 
 Recommended deletion rule: evict the oldest eligible objects when either the age limit or quota limit is exceeded. This matches a customer statement such as "retain 30 days or 2 TB, whichever limit is reached first."
 
-Object-store lifecycle rules can enforce age limits. A platform retention service is still required for quota-based eviction, policy overrides, reporting, and audit.
+Object-store lifecycle rules can enforce age limits. A platform retention service is still required for quota-based eviction, policy overrides, resolution-tier ordering, reporting, and audit. Retention policy and authorization are separate: retaining an object does not imply that every user may access its resolution tier or full history window.
 
 ## Snapshot And Live Media Paths
 

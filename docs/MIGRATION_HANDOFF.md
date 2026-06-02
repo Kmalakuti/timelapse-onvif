@@ -4,7 +4,7 @@ Use this file as the context-reset starting point for the active Python/FastAPI 
 
 ## Current Checkpoint: Phase 5.4 Cloud-Only Renderer Reads Complete
 
-Phase 1 through Phase 4 are proven. Phase 5.0 completed on 2026-06-01: isolated Ubuntu-local MinIO, bucket bootstrap, prototype IDs, and S3-compatible upload/download verification. Phase 5.1 completed on 2026-06-01: filesystem and S3-compatible adapters, stable object keys, explicit HTTP latest-frame fallback, focused adapter tests, and split UI regression verification. Phase 5.2 completed on 2026-06-01: separate Windows dev uploader sidecar, edge-local SQLite journal, deterministic original and thumbnail uploads, configurable preview generation, bounded retry and backoff, trusted-LAN MinIO S3 API bind, and outage/restart/reconnect verification. Phase 5.3 completed on 2026-06-01: core-owned stable camera mapping, token-authenticated metadata ingest, edge-local publication retry/backfill, indexed object-backed latest-frame and timeline reads, and HTTP fallback preservation. Phase 5.4 completed on 2026-06-01: indexed cloud-only renderer reads, MinIO render-artifact writes, stored-artifact downloads, and Windows dev-edge-offline render verification. Stop before Phase 5.5 retention unless deletion behavior receives new explicit authorization.
+Phase 1 through Phase 4 are proven. Phase 5.0 completed on 2026-06-01: isolated Ubuntu-local MinIO, bucket bootstrap, prototype IDs, and S3-compatible upload/download verification. Phase 5.1 completed on 2026-06-01: filesystem and S3-compatible adapters, stable object keys, explicit HTTP latest-frame fallback, focused adapter tests, and split UI regression verification. Phase 5.2 completed on 2026-06-01: separate Windows dev uploader sidecar, edge-local SQLite journal, deterministic original and thumbnail uploads, configurable preview generation, bounded retry and backoff, trusted-LAN MinIO S3 API bind, and outage/restart/reconnect verification. Phase 5.3 completed on 2026-06-01: core-owned stable camera mapping, token-authenticated metadata ingest, edge-local publication retry/backfill, indexed object-backed latest-frame and timeline reads, and HTTP fallback preservation. Phase 5.4 completed on 2026-06-01: indexed cloud-only renderer reads, MinIO render-artifact writes, stored-artifact downloads, and Windows dev-edge-offline render verification. Non-destructive Phase 5.5 retention foundation work was authorized on 2026-06-02. Deletion implementation and deletion tests remain separately blocked pending new explicit authorization.
 
 Windows edge target:
 
@@ -89,7 +89,7 @@ Started on 2026-05-31. Automated read-only checks are complete:
 
 ## Next Session Workflow
 
-Phase 5.3 and Phase 5.4 are complete. Use `docs/PHASE5_3_VERIFICATION.md` and `docs/PHASE5_4_VERIFICATION.md` as evidence. Stop before Phase 5.5 retention and request explicit authorization before adding or testing deletion behavior.
+Phase 5.3 and Phase 5.4 are complete. Use `docs/PHASE5_3_VERIFICATION.md` and `docs/PHASE5_4_VERIFICATION.md` as evidence. Implement only the authorized non-destructive Phase 5.5 policy schema, lifecycle and protected state, audit schema, deterministic candidate evaluation, and dry-run tests. Stop and request separate explicit authorization before adding deletion execution or running deletion tests.
 
 Do not combine Phase 5.6 VPS rehearsal with the retention pass.
 
@@ -124,7 +124,7 @@ The dev worker ports are acceptable for early trusted-LAN testing only. They can
 - `docs/PHASE5_3_5_HANDOFF_TEST_PLAN.md`: completed execution plan for metadata ingest, object-backed reads, renderer migration, and the retention authorization boundary.
 - `docs/PHASE5_3_VERIFICATION.md`: completed metadata-ingest, mapping, backfill, indexed-read, and outage verification evidence.
 - `docs/PHASE5_4_VERIFICATION.md`: completed cloud-only renderer, artifact-write, and edge-offline verification evidence.
-- `docs/PHASE5_5_HANDOFF_TEST_PLAN.md`: next-session retention planning, authorization boundary, decision inputs, and isolated destructive-test gate.
+- `docs/PHASE5_5_HANDOFF_TEST_PLAN.md`: authorized non-destructive retention foundation scope, confirmed product decisions, and isolated destructive-test authorization gate.
 - `docker-compose.minio-dev.yml`: isolated Ubuntu-local MinIO topology.
 - `env/minio-dev.env.example`: blank local MinIO credential template.
 - `docs/Phase 5 blockers Questions.md`: fetched product decisions that resolved Phase 5 blockers.
@@ -140,4 +140,4 @@ The Go implementation under `go-reference/TimeLapse` is parked reference materia
 
 ## Next Prompt
 
-See `docs/PHASE5_5_HANDOFF_TEST_PLAN.md` for the copy-ready next-context prompt, decision inputs, and destructive-test authorization boundary.
+See `docs/PHASE5_5_HANDOFF_TEST_PLAN.md` for the copy-ready non-destructive Phase 5.5 implementation prompt and the separate destructive-test authorization boundary.
